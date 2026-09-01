@@ -1,0 +1,88 @@
+/* ==========================================================================
+   Responsive: tablet & desktop
+   Mobile-first base lives in style.css. This file only adds/overrides
+   for wider viewports.
+   ========================================================================== */
+
+/* Tablet */
+@media (min-width: 640px) {
+  .memories-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .fav-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .notes-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .journey-counter__digits {
+    gap: 2.5rem;
+  }
+}
+
+/* Desktop: switch bottom nav for a sidebar, cap content width */
+@media (min-width: 980px) {
+  .bottom-nav {
+    display: none;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 240px;
+    flex-shrink: 0;
+    padding: 2rem 1rem;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .sidebar .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.92rem;
+  }
+  .sidebar .nav-item__icon { font-size: 1.1rem; }
+  .sidebar .nav-item--active { background: var(--background); }
+  .sidebar .nav-item--active .nav-item__icon { transform: none; }
+
+  .view-root {
+    padding-bottom: 0;
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .chat-view {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .memories-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .attach-menu {
+    left: auto;
+    right: 2rem;
+    bottom: 100px;
+    width: 260px;
+  }
+
+  .modal {
+    align-items: center;
+  }
+  .modal__panel {
+    border-radius: var(--radius-lg);
+  }
+}
+
+@media (min-width: 1200px) {
+  .memories-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
