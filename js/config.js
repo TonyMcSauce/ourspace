@@ -36,12 +36,12 @@ const CONFIG = {
   // identifiers, not secrets; access is protected by firestore.rules.
   // Leave apiKey empty to run in local demo mode on a single device.
   firebase: {
-    apiKey: "",
-    authDomain: "",
-    projectId: "",
-    storageBucket: "",
-    messagingSenderId: "",
-    appId: "",
+    apiKey: "AIzaSyAuCbX9J_qqChgAoam6-g62_QI43jB_rLo",
+    authDomain: "ourspace-8a901.firebaseapp.com",
+    projectId: "ourspace-8a901",
+    storageBucket: "ourspace-8a901.firebasestorage.app",
+    messagingSenderId: "620872244756",
+    appId: "1:620872244756:web:3b77f08fa84db5b4ed1101",
   },
 
   // Name of your shared space in the database. No need to change it.
