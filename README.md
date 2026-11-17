@@ -12,20 +12,23 @@ so the experience can be built and refined before Firebase is wired in.
 
 ## What's here
 
-- **Chat**: a one-to-one messenger with day separators, grouped bubbles,
-  read receipts, an emoji picker, photo sharing (gallery or camera), and
-  double-tap to heart a message.
-- **Love Notes**: write notes for each other, readable right away, sealed
-  as "open when…" notes the reader opens in their own moment, or sealed
-  until a date when they unlock by themselves.
-- **Memories**: a responsive gallery. Add a memory with a real photo (or a
-  soft colour), browse with arrows, swipe, or the keyboard, and remove ones
-  you no longer want.
-- **Our Journey**: a live "together for" counter with total days and the
-  next anniversary, plus a timeline you can add milestones to.
-- **Us**: the couple profile with quick stats, an editable "Our Song" with
-  a listening link, editable favourite things, and settings (dark mode that
-  follows the device by default, log out).
+- **Chat**: day separators, emoji picker, photos from the gallery or camera,
+  double tap to heart, swipe a message to reply to it, real read receipts,
+  and "online / last seen".
+- **Thinking of you**: one tap sends a heartbeat that fills the other
+  person's screen when they have the app open.
+- **Love Notes**: letters readable right away, sealed "open when…" notes,
+  or notes sealed until a date.
+- **Memories**: Polaroids with real photos, plus "On this day" when
+  something happened on this date in an earlier year.
+- **Us**: the "together for" counter, a shared countdown to your next time
+  together (also shown in chat), your timeline, Our Song and favourite things.
+- **Passcode lock**: an optional 4-digit code per phone, asked on opening
+  and after a minute away. The app switcher shows only a wax seal.
+- **iPhone app**: add it to your Home Screen for a proper icon, launch
+  screen, full-screen layout and offline opening.
+
+Everything runs on Firebase's free Spark plan. Nothing here needs a card.
 
 ---
 
@@ -35,6 +38,9 @@ so the experience can be built and refined before Firebase is wired in.
 /
 ├── index.html
 ├── firestore.rules      # database security rules (paste into Firebase)
+├── manifest.webmanifest # Home Screen app details
+├── sw.js                # offline support (bump VERSION when shipping)
+├── assets/icons, splash # app icon, wax seal, iPhone launch screens
 ├── css/
 │   ├── style.css        # design tokens, layout, components
 │   └── responsive.css   # tablet/desktop overrides
@@ -45,6 +51,8 @@ so the experience can be built and refined before Firebase is wired in.
 │   ├── cloud.js         # Firebase sign-in, live sync and presence
 │   ├── auth.js          # demo login/logout
 │   ├── router.js        # hash-based client routing
+│   ├── lock.js          # optional passcode lock
+│   ├── countdown.js     # "next time together" countdown
 │   ├── chat.js          # chat feature module
 │   ├── notes.js         # love notes feature module
 │   ├── memories.js      # memories gallery feature module
@@ -204,6 +212,7 @@ syncing again when you're back online.
 
 - Voice messages in chat
 - Typing indicators
+- Voice notes
 - Push notifications (for example when a sealed note opens)
 - Shared playlist for "Our Song"
 - Deeper relationship stats and memory organisation

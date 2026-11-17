@@ -278,6 +278,7 @@ const App = (() => {
       history.replaceState(null, "", "#/chat");
     }
     Router.init("#view-root");
+    if (Lock.isEnabled()) Lock.unlock().then(() => Chat.checkIncomingNudges());
   }
 
   async function logout() {
@@ -298,8 +299,8 @@ const App = (() => {
   // Which views care about which shared data, for live updates.
   const VIEW_DEPENDS = {
     notes: ["notes"],
-    memories: ["memories"],
-    us: ["messages", "notes", "memories", "journey", "favourites", "song"],
+    memories: ["memories", "notes", "journey"],
+    us: ["messages", "notes", "memories", "journey", "favourites", "song", "countdown"],
   };
 
   function watchRemoteChanges() {
@@ -323,7 +324,21 @@ const App = (() => {
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }
 
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch((err) => console.info("Offline support unavailable.", err));
+    });
+  }
+
+  // Keep the countdown and "last seen" fresh while the app sits open.
+  setInterval(() => {
+    if (!Auth.isAuthenticated() || document.body.classList.contains("has-modal")) return;
+    if (Router.current() === "us") Router.refresh({ quiet: true });
+  }, 60 * 1000);
+
   async function init() {
+    registerServiceWorker();
     ThemeManager.init();
     if (!Cloud.enabled) {
       renderShell();

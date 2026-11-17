@@ -198,6 +198,8 @@ const Us = (() => {
 
         <div class="section-block section-block--flush">${Journey.counterHtml()}</div>
 
+        <div class="section-block" id="countdown-host">${Countdown.cardHtml()}</div>
+
         <div class="section-block">${statsHtml()}</div>
 
         <div class="section-block">
@@ -244,6 +246,23 @@ const Us = (() => {
               </button>
             </div>
             <div class="settings-row">
+              <span class="settings-row__icon">${UI.icon("lock")}</span>
+              <div class="settings-row__text">
+                <p class="settings-row__label" id="lock-label">Passcode lock</p>
+                <p class="settings-row__hint">Asks for a code when you open the app on this phone</p>
+              </div>
+              <button
+                type="button"
+                class="toggle ${Lock.isEnabled() ? "toggle--on" : ""}"
+                id="lock-toggle"
+                role="switch"
+                aria-checked="${Lock.isEnabled()}"
+                aria-labelledby="lock-label"
+              >
+                <span class="toggle__thumb"></span>
+              </button>
+            </div>
+            <div class="settings-row">
               <span class="settings-row__icon avatar avatar--sm ${me.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}">${UI.escape(me.avatarInitial)}</span>
               <div class="settings-row__text">
                 <p class="settings-row__label">Signed in as ${UI.escape(me.displayName)}</p>
@@ -269,6 +288,21 @@ const Us = (() => {
       root.querySelector("#fav-host").innerHTML = favouritesHtml();
     };
 
+    const refreshCountdown = () => {
+      root.querySelector("#countdown-host").innerHTML = Countdown.cardHtml();
+      root.querySelector("#edit-countdown").addEventListener("click", () => Countdown.openEditor(refreshCountdown));
+    };
+    root.querySelector("#edit-countdown").addEventListener("click", () => Countdown.openEditor(refreshCountdown));
+
+    const lockToggle = root.querySelector("#lock-toggle");
+    lockToggle.addEventListener("click", async () => {
+      const done = Lock.isEnabled() ? await Lock.disable() : await Lock.setup();
+      const on = Lock.isEnabled();
+      lockToggle.classList.toggle("toggle--on", on);
+      lockToggle.setAttribute("aria-checked", String(on));
+      if (done) Toast.show(on ? "Passcode is on for this phone." : "Passcode turned off.");
+    });
+
     Journey.attachInteractions(root, refreshTimeline);
     root.querySelector("#edit-song").addEventListener("click", () => openSongEditor(refreshSong));
     root.querySelector("#add-milestone").addEventListener("click", () => Journey.openAddMilestone(refreshTimeline));
@@ -284,7 +318,7 @@ const Us = (() => {
     root.querySelector("#logout-btn").addEventListener("click", async () => {
       const ok = await UI.confirm({
         title: "Log out?",
-        message: "Everything stays saved on this device for when you come back.",
+        message: Cloud.enabled ? "Everything stays safe in your shared space. You'll need your password to sign back in." : "Everything stays saved on this device for when you come back.",
         confirmLabel: "Log out",
       });
       if (ok) App.logout();
