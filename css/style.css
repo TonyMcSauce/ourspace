@@ -832,7 +832,16 @@ input[type="date"].field__input { appearance: none; -webkit-appearance: none; }
    ========================================================================== */
 
 .us-header { padding: 2.4rem var(--gutter) 1.5rem; animation: rise var(--med) var(--ease) both; }
-.us-header__kicker { font-family: var(--mono); font-size: 0.74rem; color: var(--ink-faint); letter-spacing: 0.04em; }
+.us-header__kicker {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  margin: -0.4rem 0 -0.4rem -0.5rem; padding: 0.4rem 0.5rem;
+  border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: 0.74rem; color: var(--ink-faint); letter-spacing: 0.04em;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.us-header__kicker .icon { width: 13px; height: 13px; opacity: 0.7; }
+.us-header__kicker:hover { background: var(--paper-deep); color: var(--ink); }
+.us-header__kicker:hover .icon { color: var(--wax); opacity: 1; }
 .us-header__names { font-size: 3.4rem; line-height: 0.95; margin-top: 0.5rem; }
 .us-header__names em { display: inline-block; transform: translateY(0.04em); }
 
@@ -1214,3 +1223,113 @@ body.is-typing .bottom-nav { display: none; }
 body.is-typing .view-root { padding-bottom: 0; }
 body.is-typing .chat-view { height: 100vh; height: var(--keyboard-free, 100dvh); }
 body.is-typing .chat-input { padding-bottom: max(0.55rem, env(safe-area-inset-bottom)); }
+
+/* ==========================================================================
+   Chat wallpaper
+   ========================================================================== */
+
+.chat-view { isolation: isolate; }
+.chat-wallpaper {
+  position: absolute; inset: 0; z-index: -1;
+  overflow: hidden; pointer-events: none;
+  background-position: center;
+}
+.chat-wallpaper__photo {
+  position: absolute; inset: calc(var(--wp-blur, 0px) * -2);
+  background-size: cover; background-position: center;
+  filter: blur(var(--wp-blur, 0px)) saturate(1.05);
+}
+.chat-wallpaper::after {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(14, 10, 8, var(--wp-dim, 0));
+}
+
+/* Dark wallpapers and photos: lighter text around the bubbles, wax-red
+   bubbles for you in light mode, frosted bubbles over photos. */
+.chat-view--deep .chat-messages {
+  --ink-soft: rgba(255, 248, 239, 0.86);
+  --ink-faint: rgba(255, 248, 239, 0.66);
+  --rule: rgba(255, 248, 239, 0.22);
+}
+.chat-view--deep .day-divider, .chat-view--deep .nudge-line { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+:root:not([data-theme="dark"]) .chat-view--deep .msg--mine .msg__bubble { background: var(--wax); color: #fff8ef; }
+:root:not([data-theme="dark"]) .chat-view--deep .msg--mine .msg-status--read { color: #fff8ef; }
+.chat-view--deep .msg--theirs .msg__bubble { border-color: transparent; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.chat-view--photo .msg--theirs .msg__bubble {
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+}
+.chat-view--photo .msg--mine .msg__bubble { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.chat-view--deep .msg__swipe-icon, .chat-view--deep .msg__reply-btn { color: rgba(255, 248, 239, 0.8); }
+
+/* Picker */
+.modal__panel--wallpaper { max-width: 560px; }
+.wp-preview {
+  position: relative; height: 230px !important;
+  margin: 0 0 1.25rem;
+  border: 1px solid var(--rule); border-radius: var(--r-md);
+  overflow: hidden; background: var(--paper);
+}
+.wp-preview__msgs { position: absolute; inset: 0; padding: 0.6rem 0.8rem 0.9rem; overflow: hidden; justify-content: flex-end; }
+.wp-preview .msg__bubble { animation: none; }
+
+.wp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.85rem 0.7rem; }
+.wp-swatch { display: flex; flex-direction: column; gap: 0.35rem; text-align: left; cursor: pointer; }
+.wp-swatch__art {
+  position: relative; display: block; height: auto !important; aspect-ratio: 3 / 4;
+  border-radius: var(--r-sm); overflow: hidden;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  transition: box-shadow var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.wp-swatch__art .chat-wallpaper { z-index: 0; }
+.wp-swatch:hover .wp-swatch__art { transform: translateY(-2px); }
+.wp-swatch--active .wp-swatch__art { box-shadow: inset 0 0 0 2px var(--wax), 0 0 0 3px var(--wax-tint); }
+.wp-swatch__name { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-soft); }
+.wp-swatch--active .wp-swatch__name { color: var(--wax); }
+.wp-swatch__add {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--wax);
+  background: repeating-linear-gradient(-45deg, transparent 0 8px, var(--rule) 8px 9px);
+}
+.wp-swatch__add .icon { width: 26px; height: 26px; }
+.wp-swatch--has-photo .wp-swatch__add { background: none; color: #fff8ef; opacity: 0; transition: opacity var(--fast) var(--ease); }
+.wp-swatch--has-photo:hover .wp-swatch__add { opacity: 0.9; }
+.wp-swatch input:focus-visible + .wp-swatch__art { outline: 2px solid var(--wax); outline-offset: 2px; }
+
+.wp-adjust { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.2rem; }
+.wp-adjust[hidden] { display: none; }
+.wp-slider { display: flex; flex-direction: column; gap: 0.4rem; }
+.wp-slider input[type="range"] { width: 100%; accent-color: var(--wax); }
+
+.wp-share {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  margin-top: 1.25rem; padding: 0.85rem 0.9rem;
+  border: 1px solid var(--rule); border-radius: var(--r-sm);
+  cursor: pointer; font-size: 0.92rem; line-height: 1.35;
+}
+.wp-share input { position: absolute; opacity: 0; pointer-events: none; }
+.wp-share__box {
+  flex-shrink: 0; width: 22px; height: 22px; margin-top: 1px;
+  border: 1.5px solid var(--rule-strong); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+.wp-share input:checked + .wp-share__box { background: var(--wax); border-color: var(--wax); }
+.wp-share input:checked + .wp-share__box::after {
+  content: ""; width: 6px; height: 11px; margin-top: -2px;
+  border: solid var(--on-wax); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.wp-share input:focus-visible + .wp-share__box { outline: 2px solid var(--wax); outline-offset: 2px; }
+.wp-share strong { font-weight: 600; }
+.modal__panel--wallpaper .modal__actions { margin-top: 1.4rem; }
+
+.settings-row--link { width: 100%; text-align: left; }
+.settings-row--link .settings-row__label, .settings-row--link .settings-row__hint { display: block; }
+.settings-row__chevron { color: var(--ink-faint); }
+.settings-row__chevron .icon { width: 18px; height: 18px; }
+.settings-row--link:hover .settings-row__chevron { color: var(--wax); }
+/* Swatches: draw the pattern at double size, then shrink, so a small
+   thumbnail shows the whole design rather than one corner of it. */
+.wp-swatch__art .chat-wallpaper { inset: auto; top: 0; left: 0; width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; }

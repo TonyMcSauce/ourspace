@@ -21,8 +21,13 @@ so the experience can be built and refined before Firebase is wired in.
   or notes sealed until a date.
 - **Memories**: Polaroids with real photos, plus "On this day" when
   something happened on this date in an earlier year.
+- **Chat wallpaper**: eight designs (Paper, Letter, Linen, Hearts, Pressed
+  flowers, Night sky, Watercolour, Postmarks) or your own photo with dim and
+  blur. Each phone picks its own, or "Set for both of us".
 - **Us**: the "together for" counter, a shared countdown to your next time
   together (also shown in chat), your timeline, Our Song and favourite things.
+  Tap the date at the top to change when it all began; it updates for both
+  of you.
 - **Passcode lock**: an optional 4-digit code per phone, asked on opening
   and after a minute away. The app switcher shows only a wax seal.
 - **iPhone app**: add it to your Home Screen for a proper icon, launch
@@ -53,6 +58,7 @@ Everything runs on Firebase's free Spark plan. Nothing here needs a card.
 │   ├── router.js        # hash-based client routing
 │   ├── lock.js          # optional passcode lock
 │   ├── countdown.js     # "next time together" countdown
+│   ├── wallpaper.js     # chat wallpapers and picker
 │   ├── chat.js          # chat feature module
 │   ├── notes.js         # love notes feature module
 │   ├── memories.js      # memories gallery feature module
@@ -181,6 +187,9 @@ spaces/us/memories/{id}
 spaces/us/journey/{id}
 spaces/us/meta/favourites
 spaces/us/meta/song
+spaces/us/meta/countdown
+spaces/us/meta/profile
+spaces/us/meta/wallpaper
 spaces/us/meta/presence
 ```
 

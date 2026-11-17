@@ -151,6 +151,7 @@ const Chat = (() => {
 
     root.innerHTML = `
       <section class="chat-view" aria-label="Chat with ${UI.escape(other.displayName)}">
+        <div class="chat-wallpaper" aria-hidden="true"></div>
         <header class="chat-header">
           <div class="avatar avatar--lg ${other.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}" aria-hidden="true">${UI.escape(other.avatarInitial)}<span class="avatar__presence"></span></div>
           <div class="chat-header__info">
@@ -173,6 +174,7 @@ const Chat = (() => {
           <div class="popover attach-menu" id="attach-menu" hidden>
             <button type="button" class="attach-menu__item" data-attach="photos">${UI.icon("image")}<span>Photo</span></button>
             <button type="button" class="attach-menu__item" data-attach="camera">${UI.icon("camera")}<span>Camera</span></button>
+            <button type="button" class="attach-menu__item" data-attach="wallpaper">${UI.icon("wallpaper")}<span>Wallpaper</span></button>
           </div>
 
           <div class="reply-bar" id="reply-bar" hidden>
@@ -214,6 +216,7 @@ const Chat = (() => {
     const photoInput = root.querySelector("#chat-photo-input");
     const cameraInput = root.querySelector("#chat-camera-input");
 
+    Wallpaper.apply(root.querySelector(".chat-view"));
     renderMessageList(messagesEl, messages, me);
 
     function syncComposer() {
@@ -350,6 +353,7 @@ const Chat = (() => {
       const kind = btn.dataset.attach;
       if (kind === "photos") photoInput.click();
       else if (kind === "camera") cameraInput.click();
+      else if (kind === "wallpaper") Wallpaper.openPicker(() => Wallpaper.apply(root.querySelector(".chat-view")));
       else Toast.show("Voice notes are on the way ❤️");
     });
 
@@ -571,6 +575,7 @@ const Chat = (() => {
         return;
       }
       if (kind === "presence") paintPresence();
+      if (kind === "wallpaper") Wallpaper.apply(root.querySelector(".chat-view"));
       if (kind === "countdown") {
         const strip = root.querySelector(".countdown-strip");
         const fresh = document.createElement("div");

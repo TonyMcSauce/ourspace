@@ -13,11 +13,11 @@ const Journey = (() => {
 
   // Older versions stored display strings ("June 2025"). Map the
   // original seed events onto real dates so they sort correctly.
-  const LEGACY_DATES = { j1: CONFIG.relationshipStartDate.slice(0, 10), j2: "2025-06-14", j3: "2026-01-18" };
+  const LEGACY_DATES = { j1: Storage.getStartDate(), j2: "2025-06-14", j3: "2026-01-18" };
 
   function seedEvents() {
     return [
-      { id: "j1", icon: "❤️", label: "We became official", date: CONFIG.relationshipStartDate.slice(0, 10) },
+      { id: "j1", icon: "❤️", label: "We became official", date: Storage.getStartDate() },
       { id: "j2", icon: "✈️", label: "Our first trip together", date: "2025-06-14" },
       { id: "j3", icon: "📸", label: "One of our favourite memories", date: "2026-01-18" },
     ];
@@ -63,7 +63,7 @@ const Journey = (() => {
   }
 
   function computeDuration(startDateISO) {
-    const start = new Date(startDateISO);
+    const start = UI.parseLocalDate(String(startDateISO).slice(0, 10)) || new Date(startDateISO);
     const now = new Date();
 
     let years = now.getFullYear() - start.getFullYear();
@@ -84,11 +84,11 @@ const Journey = (() => {
   }
 
   function totalDays() {
-    return UI.daysBetween(new Date(CONFIG.relationshipStartDate), new Date());
+    return UI.daysBetween(UI.parseLocalDate(Storage.getStartDate()), new Date());
   }
 
   function nextAnniversary() {
-    const start = new Date(CONFIG.relationshipStartDate);
+    const start = UI.parseLocalDate(Storage.getStartDate());
     const today = UI.startOfDay(new Date());
     let next = new Date(today.getFullYear(), start.getMonth(), start.getDate());
     if (next < today) next = new Date(today.getFullYear() + 1, start.getMonth(), start.getDate());
@@ -102,7 +102,7 @@ const Journey = (() => {
   }
 
   function counterHtml() {
-    const { years, months, days } = computeDuration(CONFIG.relationshipStartDate);
+    const { years, months, days } = computeDuration(Storage.getStartDate());
     const anniv = nextAnniversary();
     const annivText =
       anniv.inDays === 0

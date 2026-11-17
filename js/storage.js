@@ -176,6 +176,48 @@ const Storage = (() => {
       return write("countdown", CONFIG.storageKeys.countdown, countdown);
     },
 
+    // --- Shared profile: when it all began --------------------------
+    getProfile() {
+      return read("profile", CONFIG.storageKeys.profile, null);
+    },
+    setProfile(profile) {
+      return write("profile", CONFIG.storageKeys.profile, profile);
+    },
+    /**
+     * The relationship start date as "YYYY-MM-DD". Edited from the Us
+     * page and shared between you; config.js only supplies the first
+     * value. The last known date is remembered on this phone so the
+     * sign-in screen shows it before the data has loaded.
+     */
+    getStartDate() {
+      const profile = read("profile", CONFIG.storageKeys.profile, null);
+      const valid = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+      if (profile && valid(profile.startDate)) {
+        if (safeGet(CONFIG.storageKeys.startDateCache, null) !== profile.startDate) {
+          safeSet(CONFIG.storageKeys.startDateCache, profile.startDate);
+        }
+        return profile.startDate;
+      }
+      const cached = safeGet(CONFIG.storageKeys.startDateCache, null);
+      return valid(cached) ? cached : CONFIG.relationshipStartDate.slice(0, 10);
+    },
+
+    // --- Chat wallpaper -----------------------------------------------
+    /** This phone's own choice. */
+    getWallpaperLocal() {
+      return safeGet(CONFIG.storageKeys.wallpaper, null);
+    },
+    setWallpaperLocal(wallpaper) {
+      return safeSet(CONFIG.storageKeys.wallpaper, wallpaper);
+    },
+    /** A choice one of you set "for both of us". */
+    getWallpaperShared() {
+      return read("wallpaper", CONFIG.storageKeys.wallpaperShared, null);
+    },
+    setWallpaperShared(wallpaper) {
+      return write("wallpaper", CONFIG.storageKeys.wallpaperShared, wallpaper);
+    },
+
     /** { [userId]: lastSeenMs } — only populated in cloud mode. */
     getPresence() {
       return remote ? cache.presence || {} : {};
