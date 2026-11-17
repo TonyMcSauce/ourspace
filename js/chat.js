@@ -121,7 +121,7 @@ const Chat = (() => {
           <div class="avatar avatar--lg ${other.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}" aria-hidden="true">${UI.escape(other.avatarInitial)}<span class="avatar__presence"></span></div>
           <div class="chat-header__info">
             <h1 class="chat-header__name">${UI.escape(other.displayName)}</h1>
-            <p class="chat-header__status">${UI.escape(other.statusText)}</p>
+            <p class="chat-header__status" id="chat-status">${UI.escape(statusFor(other))}</p>
           </div>
         </header>
 
@@ -211,7 +211,7 @@ const Chat = (() => {
       }
       messages = next;
       renderMessageList(messagesEl, messages, me);
-      progressStatus(msg.id);
+      if (!Cloud.isActive()) progressStatus(msg.id);
       return true;
     }
 
@@ -353,7 +353,80 @@ const Chat = (() => {
 
     // Focus the composer on wider screens, where it won't pop a keyboard.
     if (window.matchMedia("(min-width: 980px)").matches) textarea.focus({ preventScroll: true });
+
+    // Live updates from the other person (cloud mode).
+    const statusEl = root.querySelector("#chat-status");
+    const presenceDot = root.querySelector(".avatar__presence");
+    function paintPresence() {
+      statusEl.textContent = statusFor(other);
+      if (presenceDot) presenceDot.hidden = Cloud.isActive() && !isOnline(other);
+    }
+    paintPresence();
+    const presenceTimer = setInterval(() => {
+      if (!document.contains(messagesEl)) return clearInterval(presenceTimer);
+      paintPresence();
+    }, 30 * 1000);
+
+    const off = Storage.onChange((kind) => {
+      if (!document.contains(messagesEl)) {
+        off();
+        clearInterval(presenceTimer);
+        return;
+      }
+      if (kind === "presence") paintPresence();
+      if (kind !== "messages") return;
+      const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+      messages = loadMessages();
+      renderMessageList(messagesEl, messages, me, { stickToBottom: nearBottom });
+    });
+    markSeen();
   }
+
+  // ---------------------------------------------------------------
+  // Presence and receipts (cloud mode)
+  // ---------------------------------------------------------------
+  const ONLINE_WINDOW = 2 * 60 * 1000;
+
+  function isOnline(user) {
+    const seen = Storage.getPresence()[user.id];
+    return Boolean(seen && Date.now() - seen < ONLINE_WINDOW);
+  }
+
+  function statusFor(user) {
+    if (!Cloud.isActive()) return user.statusText;
+    const seen = Storage.getPresence()[user.id];
+    if (!seen) return "not here yet";
+    if (Date.now() - seen < ONLINE_WINDOW) return "online";
+    const when = new Date(seen);
+    const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const day = UI.dayLabel(seen);
+    return day === "Today" ? `last seen today at ${time}` : day === "Yesterday" ? `last seen yesterday at ${time}` : `last seen ${day.toLowerCase()}`;
+  }
+
+  /**
+   * Messages from the other person become "delivered" as soon as this
+   * device receives them, and "read" while the chat is open and visible.
+   */
+  function markSeen() {
+    if (!Cloud.isActive()) return;
+    const me = Auth.currentUser();
+    if (!me) return;
+    const viewing = Router.current() === "chat" && document.visibilityState === "visible";
+    let changed = false;
+    const next = loadMessages().map((m) => {
+      if (m.from === me.id) return m;
+      const target = viewing ? "read" : m.status === "sent" ? "delivered" : m.status;
+      if (target === m.status || (m.status === "read" && target !== "read")) return m;
+      changed = true;
+      return { ...m, status: target };
+    });
+    if (changed) saveMessages(next);
+  }
+
+  Storage.onChange((kind) => {
+    if (kind === "messages") markSeen();
+  });
+  document.addEventListener("visibilitychange", markSeen);
 
   return { render, loadMessages };
 })();

@@ -223,12 +223,24 @@ const UI = (() => {
         const img = new Image();
         img.onerror = () => reject(new Error("Couldn't open that image."));
         img.onload = () => {
-          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
-          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", quality));
+          // Each saved photo must stay well under Firestore's 1 MB
+          // document limit, so shrink until it fits.
+          const LIMIT = 700 * 1024;
+          let size = maxSize;
+          let q = quality;
+          let data = "";
+          for (let attempt = 0; attempt < 6; attempt++) {
+            const scale = Math.min(1, size / Math.max(img.width, img.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+            data = canvas.toDataURL("image/jpeg", q);
+            if (data.length <= LIMIT) break;
+            size = Math.round(size * 0.8);
+            q = Math.max(0.6, q - 0.06);
+          }
+          resolve(data);
         };
         img.src = reader.result;
       };

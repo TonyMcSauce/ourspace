@@ -77,10 +77,22 @@ const Router = (() => {
     render();
   }
 
-  function refresh() {
+  /** Re-render the current view, e.g. after a change from the other person. */
+  function refresh({ quiet = false } = {}) {
+    if (!rootEl || !document.contains(rootEl)) return;
+    const scrollY = window.scrollY;
     currentRoute = null;
-    render();
+    if (quiet) rootEl.classList.add("view-root--quiet");
+    render().then(() => {
+      if (!quiet) return;
+      window.scrollTo(0, scrollY);
+      requestAnimationFrame(() => rootEl.classList.remove("view-root--quiet"));
+    });
   }
 
-  return { register, navigate, init, render, refresh };
+  function current() {
+    return currentRoute;
+  }
+
+  return { register, navigate, init, render, refresh, current };
 })();
