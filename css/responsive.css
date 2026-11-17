@@ -4,37 +4,56 @@
    for wider viewports.
    ========================================================================== */
 
+/* Small phones */
+@media (max-width: 360px) {
+  :root { --gutter: 1rem; }
+  .journey-counter__digits { gap: 1rem; }
+  .journey-counter__number { font-size: 2rem; }
+  .page-header__title { font-size: 1.55rem; }
+  .segmented__option span { font-size: 0.78rem; }
+}
+
 /* Tablet */
 @media (min-width: 640px) {
-  .memories-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  :root { --gutter: 1.75rem; }
 
-  .fav-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .memories-grid { grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .fav-grid { grid-template-columns: repeat(2, 1fr); }
+  .notes-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  .journey-counter__digits { gap: 2.75rem; }
+  .journey-counter__number { font-size: 2.8rem; }
+  .page-header { padding-top: 2.25rem; }
 
-  .notes-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .modal { align-items: center; padding: 1.5rem; }
+  .modal__panel {
+    border-radius: var(--radius-lg);
+    padding: 2rem 2rem 1.75rem;
+    animation-name: pop-in;
   }
+  .modal__panel::before { display: none; }
+  .modal--closing .modal__panel { animation-name: fade-out; }
+  .modal__panel--photo, .modal__panel--memory { padding: 0; overflow: hidden; }
+  .viewer__body { padding: 1.5rem 2rem 1.75rem; }
 
-  .journey-counter__digits {
-    gap: 2.5rem;
-  }
+  .msg__bubble { max-width: min(70%, 520px); }
 }
 
 /* Desktop: switch bottom nav for a sidebar, cap content width */
 @media (min-width: 980px) {
-  .bottom-nav {
-    display: none;
-  }
+  :root { --nav-height: 0px; }
+
+  .bottom-nav { display: none; }
 
   .sidebar {
     display: flex;
     flex-direction: column;
-    width: 240px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: 252px;
     flex-shrink: 0;
-    padding: 2rem 1rem;
+    padding: 2rem 1rem 1.5rem;
     border-right: 1px solid var(--border);
     background: var(--surface);
   }
@@ -42,17 +61,19 @@
   .sidebar .nav-item {
     flex-direction: row;
     justify-content: flex-start;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    font-size: 0.92rem;
+    gap: 0.6rem;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.95rem;
+    min-height: 46px;
   }
-  .sidebar .nav-item__icon { font-size: 1.1rem; }
-  .sidebar .nav-item--active { background: var(--background); }
-  .sidebar .nav-item--active .nav-item__icon { transform: none; }
+  .sidebar .nav-item__icon { width: 34px; height: 34px; border-radius: 10px; }
+  .sidebar .nav-item:hover { background: var(--surface-sunken); color: var(--text); }
+  .sidebar .nav-item--active, .sidebar .nav-item--active:hover { background: var(--primary-tint); color: var(--primary); }
+  .sidebar .nav-item--active .nav-item__icon { background: transparent; }
 
   .view-root {
     padding-bottom: 0;
-    max-width: 720px;
+    max-width: 780px;
     margin: 0 auto;
     width: 100%;
   }
@@ -60,29 +81,20 @@
   .chat-view {
     height: 100vh;
     height: 100dvh;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--background);
   }
+  .chat-messages { padding: 1rem 1.5rem; }
+  .chat-input { padding: 0.75rem 1rem; }
 
-  .memories-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  .toast { bottom: 2rem; left: calc(50% + 126px); }
 
-  .attach-menu {
-    left: auto;
-    right: 2rem;
-    bottom: 100px;
-    width: 260px;
-  }
-
-  .modal {
-    align-items: center;
-  }
-  .modal__panel {
-    border-radius: var(--radius-lg);
-  }
+  .us-view, .notes-view, .memories-view { padding-bottom: 3rem; }
 }
 
 @media (min-width: 1200px) {
-  .memories-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
+  .memories-grid { grid-template-columns: repeat(4, 1fr); }
+  .view-root { max-width: 900px; }
+  .notes-grid { grid-template-columns: repeat(3, 1fr); }
 }

@@ -36,12 +36,21 @@ const CONFIG = {
     food: "Late-night ramen runs",
     place: "That bench by the harbour",
     movie: "Spirited Away",
-    song: "Coming soon",
     insideJoke: "\u201Cthe incident\u201D (you know the one)",
   },
 
+  // Starting point for "Our Song". Editable in the app (Us page);
+  // edits are saved through storage.js and override this.
+  song: {
+    title: "",
+    artist: "",
+    link: "",
+  },
+
   theme: {
-    default: "light", // "light" | "dark"
+    // "light" | "dark" | "system" (follows the device setting until
+    // someone flips the toggle on the Us page).
+    default: "system",
     storageKey: "ourspace_theme",
   },
 
@@ -51,6 +60,8 @@ const CONFIG = {
     notes: "ourspace_notes",
     memories: "ourspace_memories",
     journey: "ourspace_journey",
+    favourites: "ourspace_favourites",
+    song: "ourspace_song",
   },
 };
 
