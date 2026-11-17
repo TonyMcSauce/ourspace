@@ -18,15 +18,17 @@ const CONFIG = {
       id: "tony",
       displayName: "Tony",
       avatarInitial: "T",
-      // Login email for this person's Firebase account.
-      email: "",
+      // SHA-256 of this person's Firebase login email (lowercase).
+      // Only a fingerprint is kept here so the email itself never
+      // appears in the public code. See README for how to make one.
+      emailHash: "98af3f082bec9181dd2fdd85691b90027b256f001d3605cd8e8890365aaa8115",
       statusText: "probably thinking about you",
     },
     babegirl: {
       id: "babegirl",
       displayName: "Babegirl",
       avatarInitial: "B",
-      email: "",
+      emailHash: "d9c4ab0c8b94caf18de9b56598ce7b7cf043acf0e55a1246d69f01e519066065",
       statusText: "online",
     },
   },
@@ -36,12 +38,12 @@ const CONFIG = {
   // identifiers, not secrets; access is protected by firestore.rules.
   // Leave apiKey empty to run in local demo mode on a single device.
   firebase: {
-    apiKey: "",
-    authDomain: "",
-    projectId: "",
-    storageBucket: "",
-    messagingSenderId: "",
-    appId: "",
+    apiKey: "AIzaSyAuCbX9J_qqChgAoam6-g62_QI43jB_rLo",
+    authDomain: "ourspace-8a901.firebaseapp.com",
+    projectId: "ourspace-8a901",
+    storageBucket: "ourspace-8a901.firebasestorage.app",
+    messagingSenderId: "620872244756",
+    appId: "1:620872244756:web:3b77f08fa84db5b4ed1101",
   },
 
   // Name of your shared space in the database. No need to change it.

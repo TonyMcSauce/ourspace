@@ -97,6 +97,22 @@ const App = (() => {
           <p class="login-card__tagline">${UI.escape(CONFIG.tagline)}</p>
 
           <form id="login-form" class="login-form" novalidate>
+            ${
+              Cloud.enabled
+                ? `
+            <label class="login-form__label" for="login-username">Email</label>
+            <input
+              id="login-username"
+              class="login-form__input"
+              type="email"
+              inputmode="email"
+              placeholder="you@example.com"
+              autocomplete="email username"
+              autocapitalize="off"
+              spellcheck="false"
+              required
+            />`
+                : `
             <span class="login-form__label" id="login-who">Who's there?</span>
             <div class="login-form__people" role="radiogroup" aria-labelledby="login-who">
               ${Object.values(CONFIG.users)
@@ -119,7 +135,8 @@ const App = (() => {
               autocomplete="username"
               autocapitalize="words"
               required
-            />
+            />`
+            }
 
             <label class="login-form__label" for="login-password">Password ${Cloud.enabled ? "" : '<span class="login-form__optional">optional in demo mode</span>'}</label>
             <input

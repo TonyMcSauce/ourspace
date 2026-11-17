@@ -44,16 +44,16 @@ const Cloud = (() => {
     return db.collection("spaces").doc(CONFIG.spaceId || "us");
   }
 
-  function userIdForEmail(email) {
-    const e = String(email || "").trim().toLowerCase();
-    const match = Object.values(CONFIG.users).find((u) => (u.email || "").trim().toLowerCase() === e);
-    return match ? match.id : null;
+  async function sha256(text) {
+    const bytes = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
   }
 
-  function emailForName(name) {
-    const n = String(name || "").trim().toLowerCase();
-    const match = Object.values(CONFIG.users).find((u) => u.displayName.toLowerCase() === n || u.id === n);
-    return match ? match.email : null;
+  async function userIdForEmail(email) {
+    const hash = await sha256(String(email || "").trim().toLowerCase());
+    const match = Object.values(CONFIG.users).find((u) => u.emailHash === hash);
+    return match ? match.id : null;
   }
 
   // Firestore rejects `undefined`; a JSON round-trip drops those keys.
@@ -199,7 +199,7 @@ const Cloud = (() => {
   }
 
   async function start(user) {
-    const id = userIdForEmail(user.email);
+    const id = await userIdForEmail(user.email);
     if (!id) {
       await auth.signOut();
       throw new Error("That account isn't one of the two in this space.");
@@ -216,16 +216,13 @@ const Cloud = (() => {
     if (/invalid-credential|wrong-password|user-not-found|invalid-login/.test(code)) return "That password doesn't match. Try again.";
     if (/too-many-requests/.test(code)) return "Too many tries. Wait a minute, then try again.";
     if (/network-request-failed/.test(code)) return "No connection. Check your internet and try again.";
-    if (/invalid-email|missing-email/.test(code)) return "This person's email isn't set up yet in config.js.";
+    if (/invalid-email|missing-email/.test(code)) return "That doesn't look like an email address.";
     return (err && err.message) || "Couldn't sign in. Please try again.";
   }
 
-  async function signIn(name, password) {
-    const email = emailForName(name);
-    if (!email) {
-      const known = Object.values(CONFIG.users).map((u) => u.displayName).join(" or ");
-      throw new Error(`Choose ${known} to sign in.`);
-    }
+  async function signIn(email, password) {
+    email = String(email || "").trim();
+    if (!email) throw new Error("Enter your email.");
     if (!password) throw new Error("Enter your password.");
     let cred;
     try {
