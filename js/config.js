@@ -18,15 +18,17 @@ const CONFIG = {
       id: "tony",
       displayName: "Tony",
       avatarInitial: "T",
-      // Login email for this person's Firebase account.
-      email: "",
+      // SHA-256 of this person's Firebase login email (lowercase).
+      // Only a fingerprint is kept here so the email itself never
+      // appears in the public code. See README for how to make one.
+      emailHash: "98af3f082bec9181dd2fdd85691b90027b256f001d3605cd8e8890365aaa8115",
       statusText: "probably thinking about you",
     },
     babegirl: {
       id: "babegirl",
       displayName: "Babegirl",
       avatarInitial: "B",
-      email: "",
+      emailHash: "d9c4ab0c8b94caf18de9b56598ce7b7cf043acf0e55a1246d69f01e519066065",
       statusText: "online",
     },
   },

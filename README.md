@@ -145,14 +145,21 @@ Storage or a billing account.
    one for each of you with an email and a password you'll remember.
 5. **Create the database**: *Build → Firestore Database → Create database*.
    Pick a location close to you and start in **production mode**.
-6. **Lock it to the two of you**: open `firestore.rules` in this repo,
+6. **Lock it to the two of you**: copy `firestore.rules` from this repo,
    replace the two placeholder emails with your real ones (lowercase),
-   then paste the whole file into *Firestore → Rules* and click **Publish**.
+   then paste it into *Firestore → Rules* and click **Publish**.
 7. **Allow your website**: *Authentication → Settings → Authorized domains
    → Add domain*, and add your site's domain (for GitHub Pages that's
    `<your-username>.github.io`).
-8. In `js/config.js`, paste the values from step 2 into `firebase: { ... }`
-   and add each person's email under `users`.
+8. In `js/config.js`, paste the values from step 2 into `firebase: { ... }`.
+   Under `users`, set each person's `emailHash`: the SHA-256 of their
+   login email in lowercase. Only this fingerprint goes in the code, so
+   your emails never appear in the public repository. To make one, run
+   `printf '%s' 'you@example.com' | shasum -a 256` (macOS/Linux).
+
+Sign in with your email and password; your phone can remember both.
+Keep the real emails in `firestore.rules` only inside the Firebase
+console, not in the copy committed here.
 
 Publish, open the site on both phones, and sign in. Your shared space
 starts empty and fresh; the demo content never gets copied across.
