@@ -190,6 +190,8 @@ const Chat = (() => {
               class="chat-input__field"
               placeholder="Message ${UI.escape(other.displayName)}…"
               rows="1"
+              enterkeyhint="send"
+              autocapitalize="sentences"
               aria-label="Message"
             ></textarea>
             <button type="button" class="icon-btn" id="attach-btn" aria-label="Attach" aria-expanded="false" aria-controls="attach-menu">${UI.icon("clip")}</button>
@@ -453,6 +455,61 @@ const Chat = (() => {
 
     // Focus the composer on wider screens, where it won't pop a keyboard.
     if (window.matchMedia("(min-width: 980px)").matches) textarea.focus({ preventScroll: true });
+
+    // Feel like a native messenger: tap or drag the conversation to put
+    // the keyboard away, and give the chat the whole screen while typing.
+    const touchDevice = window.matchMedia("(hover: none)").matches;
+    textarea.addEventListener("focus", () => {
+      if (touchDevice) document.body.classList.add("is-typing");
+      requestAnimationFrame(() => (messagesEl.scrollTop = messagesEl.scrollHeight));
+    });
+    textarea.addEventListener("blur", () => {
+      document.body.classList.remove("is-typing");
+      document.documentElement.style.removeProperty("--keyboard-free");
+    });
+    // Fit the chat into the space above the iPhone keyboard so the
+    // header never scrolls out of view.
+    const vv = window.visualViewport;
+    if (vv && touchDevice) {
+      const fit = () => {
+        if (!document.contains(messagesEl)) {
+          vv.removeEventListener("resize", fit);
+          vv.removeEventListener("scroll", fit);
+          return;
+        }
+        if (!document.body.classList.contains("is-typing")) return;
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+        document.documentElement.style.setProperty("--keyboard-free", `${vv.height}px`);
+        window.scrollTo(0, 0);
+        if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+      };
+      vv.addEventListener("resize", fit);
+      vv.addEventListener("scroll", fit);
+    }
+    // Composer buttons must not steal focus from the text box, otherwise
+    // the keyboard drops and the layout jumps mid-tap (send, emoji,
+    // attach, cancel reply all keep the keyboard up, like Messages).
+    root.querySelectorAll(".chat-input button, #reply-cancel").forEach((btn) =>
+      btn.addEventListener("mousedown", (e) => e.preventDefault())
+    );
+    const dismissKeyboard = () => {
+      if (document.activeElement === textarea) textarea.blur();
+    };
+    let dragStartY = null;
+    messagesEl.addEventListener("touchstart", (e) => (dragStartY = e.touches[0].clientY), { passive: true });
+    messagesEl.addEventListener(
+      "touchmove",
+      (e) => {
+        if (dragStartY !== null && e.touches[0].clientY - dragStartY > 14) {
+          dragStartY = null;
+          dismissKeyboard();
+        }
+      },
+      { passive: true }
+    );
+    messagesEl.addEventListener("click", (e) => {
+      if (!e.target.closest("[data-reply], [data-jump], [data-open-image]")) dismissKeyboard();
+    });
 
     // Swipe a bubble to the right to reply (touch screens).
     let swipe = null;

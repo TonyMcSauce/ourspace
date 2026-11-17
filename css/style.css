@@ -1207,3 +1207,10 @@ body.is-locked { overflow: hidden; }
 
 @keyframes lock-out { to { opacity: 0; transform: scale(1.03); } }
 @keyframes heartbeat { 0%, 60%, 100% { transform: scale(1); } 12% { transform: scale(1.16); } 24% { transform: scale(1); } 36% { transform: scale(1.1); } }
+
+/* While typing on a phone, hide the tab bar so the chat gets the room,
+   the way native messaging apps do. */
+body.is-typing .bottom-nav { display: none; }
+body.is-typing .view-root { padding-bottom: 0; }
+body.is-typing .chat-view { height: 100vh; height: var(--keyboard-free, 100dvh); }
+body.is-typing .chat-input { padding-bottom: max(0.55rem, env(safe-area-inset-bottom)); }
