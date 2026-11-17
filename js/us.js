@@ -34,17 +34,13 @@ const Us = (() => {
     const messages = Chat.loadMessages().length;
     const notes = Notes.loadNotes().length;
     const memories = Memories.loadMemories().length;
-    const stat = (n, label, href) => `
-      <a class="stat" href="${href}">
-        <span class="stat__number">${n.toLocaleString()}</span>
-        <span class="stat__label">${label}</span>
-      </a>`;
+    const stat = (n, one, many, href) => `<a class="tally__item" href="${href}"><b>${n.toLocaleString()}</b> ${n === 1 ? one : many}</a>`;
     return `
-      <div class="stats">
-        ${stat(messages, messages === 1 ? "Message" : "Messages", "#/chat")}
-        ${stat(notes, notes === 1 ? "Love note" : "Love notes", "#/notes")}
-        ${stat(memories, memories === 1 ? "Memory" : "Memories", "#/memories")}
-      </div>
+      <p class="tally">
+        So far: ${stat(messages, "message", "messages", "#/chat")},
+        ${stat(notes, "love note", "love notes", "#/notes")} and
+        ${stat(memories, "memory", "memories", "#/memories")}.
+      </p>
     `;
   }
 
@@ -53,21 +49,21 @@ const Us = (() => {
     const link = safeLink(s.link);
     if (!s.title) {
       return `
-        <button type="button" class="song-card song-card--empty" id="edit-song">
-          <span class="song-card__art">${UI.icon("music")}</span>
-          <span class="song-card__text">
-            <span class="song-card__title">Choose your song</span>
-            <span class="song-card__artist">The one that's always been yours.</span>
+        <button type="button" class="record record--empty" id="edit-song">
+          <span class="record__disc" aria-hidden="true"><span class="record__label"></span></span>
+          <span class="record__text">
+            <span class="record__title">Pick your song</span>
+            <span class="record__artist">The one that's always been yours.</span>
           </span>
-          <span class="song-card__action">${UI.icon("plus")}</span>
+          <span class="record__action">${UI.icon("plus")}</span>
         </button>`;
     }
     return `
-      <div class="song-card">
-        <span class="song-card__art">${UI.icon("music")}</span>
-        <span class="song-card__text">
-          <span class="song-card__title">${UI.escape(s.title)}</span>
-          <span class="song-card__artist">${UI.escape(s.artist || "Our song")}</span>
+      <div class="record">
+        <span class="record__disc record__disc--spin" aria-hidden="true"><span class="record__label">${UI.icon("us")}</span></span>
+        <span class="record__text">
+          <span class="record__title">${UI.escape(s.title)}</span>
+          <span class="record__artist">${UI.escape(s.artist || "Our song")}</span>
         </span>
         ${link ? `<a class="icon-btn" href="${UI.escape(link)}" target="_blank" rel="noopener noreferrer" aria-label="Listen to ${UI.escape(s.title)}">${UI.icon("external")}</a>` : ""}
         <button type="button" class="icon-btn" id="edit-song" aria-label="Edit our song">${UI.icon("edit")}</button>
@@ -76,16 +72,13 @@ const Us = (() => {
 
   function favouritesHtml() {
     const fav = favourites();
-    return FAVOURITES.map(
+    return `<dl class="menu">${FAVOURITES.map(
       (f) => `
-      <div class="fav-card">
-        <span class="fav-card__icon" aria-hidden="true">${f.icon}</span>
-        <div class="fav-card__text">
-          <p class="fav-card__label">${f.label}</p>
-          <p class="fav-card__value">${UI.escape(fav[f.key] || "Not decided yet")}</p>
-        </div>
+      <div class="menu__row">
+        <dt class="menu__label">${f.label.replace(/^Favourite /, "")}</dt>
+        <dd class="menu__value">${UI.escape(fav[f.key] || "Not decided yet")}</dd>
       </div>`
-    ).join("");
+    ).join("")}</dl>`;
   }
 
   function openSongEditor(onChange) {
@@ -199,13 +192,8 @@ const Us = (() => {
     root.innerHTML = `
       <section class="us-view">
         <header class="us-header">
-          <div class="us-header__avatars" aria-hidden="true">
-            <span class="avatar avatar--xl">${UI.escape(users[0].avatarInitial)}</span>
-            <span class="us-header__heart">${UI.icon("us")}</span>
-            <span class="avatar avatar--xl avatar--alt">${UI.escape(users[1].avatarInitial)}</span>
-          </div>
-          <h1 class="us-header__names">${UI.escape(users[0].displayName)} <span class="us-header__amp">&amp;</span> ${UI.escape(users[1].displayName)}</h1>
-          <p class="us-header__since">Together since ${UI.formatLongDate(CONFIG.relationshipStartDate.slice(0, 10))}</p>
+          <p class="us-header__kicker">${UI.formatLongDate(CONFIG.relationshipStartDate.slice(0, 10))} — today</p>
+          <h1 class="us-header__names">${UI.escape(users[0].displayName)} <em>&amp;</em> ${UI.escape(users[1].displayName)}</h1>
         </header>
 
         <div class="section-block section-block--flush">${Journey.counterHtml()}</div>
@@ -214,7 +202,7 @@ const Us = (() => {
 
         <div class="section-block">
           <div class="section-block__head">
-            <h2 class="section-block__title">Our Journey</h2>
+            <h2 class="section-block__title">The <em>story</em> so far</h2>
             <button type="button" class="btn btn--text" id="add-milestone">${UI.icon("plus")} Add</button>
           </div>
           <div id="timeline-host">${Journey.timelineHtml(Journey.loadEvents())}</div>
@@ -222,17 +210,17 @@ const Us = (() => {
 
         <div class="section-block">
           <div class="section-block__head">
-            <h2 class="section-block__title">Our Song</h2>
+            <h2 class="section-block__title">Our <em>song</em></h2>
           </div>
           <div id="song-host">${songHtml()}</div>
         </div>
 
         <div class="section-block">
           <div class="section-block__head">
-            <h2 class="section-block__title">Favourite Things</h2>
+            <h2 class="section-block__title">Favourite <em>things</em></h2>
             <button type="button" class="btn btn--text" id="edit-favs">${UI.icon("edit")} Edit</button>
           </div>
-          <div class="fav-grid" id="fav-host">${favouritesHtml()}</div>
+          <div id="fav-host">${favouritesHtml()}</div>
         </div>
 
         <div class="section-block">
@@ -256,7 +244,7 @@ const Us = (() => {
               </button>
             </div>
             <div class="settings-row">
-              <span class="settings-row__icon avatar avatar--sm">${UI.escape(me.avatarInitial)}</span>
+              <span class="settings-row__icon avatar avatar--sm ${me.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}">${UI.escape(me.avatarInitial)}</span>
               <div class="settings-row__text">
                 <p class="settings-row__label">Signed in as ${UI.escape(me.displayName)}</p>
                 <p class="settings-row__hint">Sharing this space with ${UI.escape(other.displayName)}</p>
@@ -264,7 +252,7 @@ const Us = (() => {
               <button type="button" class="btn btn--ghost btn--sm" id="logout-btn">Log out</button>
             </div>
           </div>
-          <p class="us-footer">Made with love, for the two of you.</p>
+          <p class="us-footer">Kept with love, by the two of you.</p>
         </div>
       </section>
     `;

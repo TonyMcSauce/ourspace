@@ -117,34 +117,38 @@ const Notes = (() => {
   function cardHtml(note, me, index) {
     const state = stateOf(note);
     const mine = note.author === me.id;
-    const delay = `style="animation-delay:${Math.min(index, 8) * 50}ms"`;
+    const tilt = [-0.8, 0.6, -0.3, 0.9, -0.6, 0.4][index % 6];
+    const style = `style="--tilt:${tilt}deg;animation-delay:${Math.min(index, 8) * 60}ms"`;
 
     if (state === "sealed-dated" || state === "sealed-open-when") {
       const hint =
         state === "sealed-dated"
-          ? `${countdown(note.unlockDate)} · ${UI.formatLongDate(note.unlockDate)}`
+          ? `${countdown(note.unlockDate)}`
           : mine
-          ? `Waiting for ${UI.escape(Auth.otherUser().displayName)} to open it`
-          : "Open it whenever the moment feels right";
+          ? `Waiting for ${UI.escape(Auth.otherUser().displayName)}`
+          : "Open when it feels right";
       return `
-        <button type="button" class="note-card note-card--locked" data-note-id="${UI.escape(note.id)}" ${delay}>
-          <span class="note-card__seal" aria-hidden="true">${UI.icon("lock")}</span>
-          <span class="note-card__eyebrow">${mine ? "Sealed by you" : `Sealed by ${UI.escape(authorName(note.author))}`}</span>
-          <span class="note-card__title">${UI.escape(note.title)}</span>
-          <span class="note-card__hint">${hint}</span>
+        <button type="button" class="envelope" data-note-id="${UI.escape(note.id)}" ${style}>
+          <span class="envelope__flap" aria-hidden="true"></span>
+          <span class="seal envelope__seal" aria-hidden="true">${UI.icon("us")}</span>
+          <span class="envelope__body">
+            <span class="envelope__to">${mine ? `to ${UI.escape(Auth.otherUser().displayName)}` : `from ${UI.escape(authorName(note.author))}`}</span>
+            <span class="envelope__title">${UI.escape(note.title)}</span>
+            <span class="envelope__hint">${hint}${state === "sealed-dated" ? ` · ${UI.formatLongDate(note.unlockDate)}` : ""}</span>
+          </span>
         </button>
       `;
     }
 
     return `
-      <button type="button" class="note-card" data-note-id="${UI.escape(note.id)}" ${delay}>
-        <span class="note-card__eyebrow">${mine ? "From you" : `From ${UI.escape(authorName(note.author))}`}</span>
-        <span class="note-card__title">${UI.escape(note.title)}</span>
-        <span class="note-card__message">${UI.escape(note.message)}</span>
-        <span class="note-card__footer">
-          <span>— ${UI.escape(authorName(note.author))}</span>
+      <button type="button" class="letter" data-note-id="${UI.escape(note.id)}" ${style}>
+        <span class="letter__meta">
+          <span>${mine ? "from you" : `from ${UI.escape(authorName(note.author))}`}</span>
           <span>${formatDate(note.date)}</span>
         </span>
+        <span class="letter__title">${UI.escape(note.title)}</span>
+        <span class="letter__message">${UI.escape(note.message)}</span>
+        <span class="letter__sign">${UI.escape(authorName(note.author))}</span>
       </button>
     `;
   }
@@ -183,7 +187,7 @@ const Notes = (() => {
         <p class="note-reader__eyebrow">${mine ? "You wrote" : `${UI.escape(authorName(note.author))} wrote`} · ${formatDate(note.date)}</p>
         <h2 class="note-reader__title">${UI.escape(note.title)}</h2>
         <p class="note-reader__message">${UI.escape(note.message)}</p>
-        <p class="note-reader__sign">— ${UI.escape(authorName(note.author))}</p>
+        <p class="note-reader__sign">${UI.escape(authorName(note.author))}</p>
         ${
           mine
             ? `<div class="modal__actions modal__actions--start"><button type="button" class="btn btn--text btn--text-danger" data-delete>${UI.icon("trash")} Delete note</button></div>`
@@ -218,7 +222,7 @@ const Notes = (() => {
         variant: "modal__panel--small",
         label: "Sealed note",
         content: `
-          <div class="modal__panel-icon">${UI.icon("lock")}</div>
+          <div class="seal seal--modal" aria-hidden="true">${UI.icon("us")}</div>
           <h2 class="modal__title">${UI.escape(note.title)}</h2>
           <p class="modal__panel-text">${
             state === "sealed-dated"
@@ -248,7 +252,7 @@ const Notes = (() => {
         variant: "modal__panel--small",
         label: "Not yet",
         content: `
-          <div class="modal__panel-icon">${UI.icon("lock")}</div>
+          <div class="seal seal--modal" aria-hidden="true">${UI.icon("us")}</div>
           <h2 class="modal__title">Not quite yet</h2>
           <p class="modal__panel-text">${UI.escape(authorName(note.author))} sealed this until ${UI.formatLongDate(note.unlockDate)}. ${countdown(note.unlockDate)}.</p>
           <button type="button" class="btn btn--primary" data-close-modal>I'll wait</button>
@@ -377,8 +381,8 @@ const Notes = (() => {
       <section class="notes-view">
         <header class="page-header page-header--with-action">
           <div>
-            <h1 class="page-header__title">Love Notes</h1>
-            <p class="page-header__subtitle">Little things, saved for each other.</p>
+            <h1 class="page-header__title">Love <em>notes</em></h1>
+            <p class="page-header__subtitle">Little letters, left for each other.</p>
           </div>
           <button type="button" class="btn btn--primary btn--icon-text" id="new-note-btn">${UI.icon("plus")}<span>Write</span></button>
         </header>

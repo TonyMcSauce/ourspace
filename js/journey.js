@@ -106,53 +106,47 @@ const Journey = (() => {
     const anniv = nextAnniversary();
     const annivText =
       anniv.inDays === 0
-        ? `Happy ${ordinal(anniv.years)} anniversary ❤️`
-        : `${ordinal(anniv.years)} anniversary in ${anniv.inDays} ${anniv.inDays === 1 ? "day" : "days"}`;
-    const unit = (n, one, many) => `
-      <div class="journey-counter__unit">
-        <span class="journey-counter__number">${n}</span>
-        <span class="journey-counter__word">${n === 1 ? one : many}</span>
-      </div>`;
+        ? `Happy ${ordinal(anniv.years)} anniversary, today.`
+        : `${ordinal(anniv.years)} anniversary in ${anniv.inDays} ${anniv.inDays === 1 ? "day" : "days"}.`;
+    const part = (n, one, many) => `<span><b>${n}</b> ${n === 1 ? one : many}</span>`;
     return `
-      <button type="button" class="journey-counter" id="journey-counter" aria-label="Together for ${years} years, ${months} months and ${days} days">
-        <span class="journey-counter__label">Together for</span>
-        <span class="journey-counter__digits">
-          ${unit(years, "Year", "Years")}
-          ${unit(months, "Month", "Months")}
-          ${unit(days, "Day", "Days")}
+      <button type="button" class="counter" id="journey-counter" aria-label="Together for ${totalDays()} days: ${years} years, ${months} months and ${days} days">
+        <span class="counter__label">Together for</span>
+        <span class="counter__number">${totalDays().toLocaleString()}</span>
+        <span class="counter__unit">days</span>
+        <span class="counter__breakdown">
+          ${part(years, "year", "years")}
+          ${part(months, "month", "months")}
+          ${part(days, "day", "days")}
         </span>
-        <span class="journey-counter__footer">
-          <span>${totalDays().toLocaleString()} days and counting</span>
-          <span class="journey-counter__dot" aria-hidden="true"></span>
-          <span>${annivText}</span>
-        </span>
+        <span class="counter__next">${annivText}</span>
       </button>
     `;
+  }
+
+  function shortDate(value) {
+    if (!UI.isIsoDate(value)) return UI.escape(value);
+    const d = UI.parseLocalDate(value);
+    return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
   }
 
   function timelineHtml(events) {
     const items = sortedEvents(events)
       .map(
         (ev, i) => `
-        <li class="timeline__item" style="animation-delay:${i * 70}ms">
-          <span class="timeline__icon" aria-hidden="true">${UI.escape(ev.icon)}</span>
-          <div class="timeline__content">
-            <p class="timeline__label">${UI.escape(ev.label)}</p>
-            <p class="timeline__date">${UI.escape(UI.isIsoDate(ev.date) ? UI.formatLongDate(ev.date) : ev.date)}</p>
-          </div>
-          <button type="button" class="timeline__remove icon-btn icon-btn--sm" data-remove-event="${UI.escape(ev.id)}" aria-label="Remove ${UI.escape(ev.label)}">${UI.icon("close")}</button>
+        <li class="ledger__row" style="animation-delay:${i * 60}ms">
+          <span class="ledger__date">${shortDate(ev.date)}</span>
+          <span class="ledger__label"><span class="ledger__icon" aria-hidden="true">${UI.escape(ev.icon)}</span>${UI.escape(ev.label)}</span>
+          <button type="button" class="ledger__remove icon-btn icon-btn--sm" data-remove-event="${UI.escape(ev.id)}" aria-label="Remove ${UI.escape(ev.label)}">${UI.icon("close")}</button>
         </li>`
       )
       .join("");
     return `
-      <ol class="timeline">
+      <ol class="ledger">
         ${items}
-        <li class="timeline__item timeline__item--now">
-          <span class="timeline__icon" aria-hidden="true"><span class="timeline__pulse"></span></span>
-          <div class="timeline__content">
-            <p class="timeline__label">Today</p>
-            <p class="timeline__date">Still writing our story</p>
-          </div>
+        <li class="ledger__row ledger__row--now">
+          <span class="ledger__date">Today</span>
+          <span class="ledger__label"><span class="ledger__now-dot" aria-hidden="true"></span>Still writing it</span>
         </li>
       </ol>
     `;
@@ -213,9 +207,9 @@ const Journey = (() => {
     const counter = root.querySelector("#journey-counter");
     if (counter) {
       counter.addEventListener("click", () => {
-        counter.classList.remove("journey-counter--pulse");
+        counter.classList.remove("counter--pulse");
         void counter.offsetWidth; // restart the animation on repeat clicks
-        counter.classList.add("journey-counter--pulse");
+        counter.classList.add("counter--pulse");
       });
     }
     root.querySelectorAll("[data-remove-event]").forEach((btn) =>

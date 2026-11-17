@@ -66,22 +66,24 @@ const Memories = (() => {
   }
 
   function cardHtml(mem, index) {
+    const tilt = [-2.2, 1.6, -1, 2.4, -1.8, 0.8, 1.9, -2.6][index % 8];
     return `
-      <button type="button" class="memory-card ${mem.image ? "memory-card--photo" : ""}" data-memory-id="${UI.escape(mem.id)}"
-        style="${visual(mem)};animation-delay:${Math.min(index, 10) * 45}ms" aria-label="${UI.escape(mem.title)}, ${UI.escape(UI.formatMonthYear(mem.date))}">
-        <span class="memory-card__overlay">
-          <span class="memory-card__title">${UI.escape(mem.title)}</span>
-          <span class="memory-card__date">${UI.escape(UI.formatMonthYear(mem.date))}</span>
-        </span>
+      <button type="button" class="polaroid" data-memory-id="${UI.escape(mem.id)}"
+        style="--tilt:${tilt}deg;animation-delay:${Math.min(index, 10) * 55}ms" aria-label="${UI.escape(mem.title)}, ${UI.escape(UI.formatMonthYear(mem.date))}">
+        <span class="polaroid__tape" aria-hidden="true"></span>
+        <span class="polaroid__photo" style="${visual(mem)}"></span>
+        <span class="polaroid__caption">${UI.escape(mem.title)}</span>
+        <span class="polaroid__date">${UI.escape(UI.formatMonthYear(mem.date))}</span>
       </button>
     `;
   }
 
   function addTileHtml() {
     return `
-      <button type="button" class="memory-card memory-card--add" id="add-memory-tile">
-        <span class="memory-card__add-icon">${UI.icon("plus")}</span>
-        <span class="memory-card__add-label">Add a memory</span>
+      <button type="button" class="polaroid polaroid--add" id="add-memory-tile" style="--tilt:-1.2deg">
+        <span class="polaroid__photo polaroid__photo--empty">${UI.icon("plus")}</span>
+        <span class="polaroid__caption">Add a memory</span>
+        <span class="polaroid__date">whenever you like</span>
       </button>
     `;
   }
@@ -268,7 +270,7 @@ const Memories = (() => {
       <section class="memories-view">
         <header class="page-header page-header--with-action">
           <div>
-            <h1 class="page-header__title">Memories</h1>
+            <h1 class="page-header__title"><em>Memories</em></h1>
             <p class="page-header__subtitle" id="memories-count">Little moments worth keeping.</p>
           </div>
           <button type="button" class="btn btn--primary btn--icon-text" id="add-memory-btn">${UI.icon("plus")}<span>Add</span></button>
@@ -285,7 +287,7 @@ const Memories = (() => {
       grid.innerHTML = addTileHtml() + list.map(cardHtml).join("");
       const count = root.querySelector("#memories-count");
       count.textContent = list.length
-        ? `${list.length} little ${list.length === 1 ? "moment" : "moments"} worth keeping.`
+        ? `${list.length} ${list.length === 1 ? "moment" : "moments"}, kept.`
         : "Little moments worth keeping.";
     }
     refresh();
