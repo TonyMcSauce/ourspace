@@ -84,6 +84,10 @@ const CONFIG = {
     favourites: "ourspace_favourites",
     song: "ourspace_song",
     countdown: "ourspace_countdown",
+    profile: "ourspace_profile",
+    startDateCache: "ourspace_start_date",
+    wallpaper: "ourspace_wallpaper",
+    wallpaperShared: "ourspace_wallpaper_shared",
   },
 };
 

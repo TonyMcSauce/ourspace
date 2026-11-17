@@ -43,10 +43,10 @@ const Countdown = (() => {
     const hours = Math.floor((diff % UI.DAY) / HOUR);
     const mins = Math.max(1, Math.floor((diff % HOUR) / 60000));
     if (days >= 1) {
-      return { ...base, past: false, number: String(days), unit: days === 1 ? "day" : "days", rest: plural(hours, "hour", "hours"), short: plural(days, "day", "days") };
+      return { ...base, past: false, number: String(days), unit: days === 1 ? "day" : "days", rest: hours ? plural(hours, "hour", "hours") : "", short: plural(days, "day", "days") };
     }
     if (hours >= 1) {
-      return { ...base, past: false, number: String(hours), unit: hours === 1 ? "hour" : "hours", rest: plural(mins, "minute", "minutes"), short: `${hours}h ${mins}m` };
+      return { ...base, past: false, number: String(hours), unit: hours === 1 ? "hour" : "hours", rest: mins ? plural(mins, "minute", "minutes") : "", short: `${hours}h ${mins}m` };
     }
     return { ...base, past: false, number: String(mins), unit: mins === 1 ? "minute" : "minutes", rest: "", short: plural(mins, "min", "min") };
   }

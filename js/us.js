@@ -183,6 +183,50 @@ const Us = (() => {
     });
   }
 
+  function openStartDateEditor(onChange) {
+    const current = Storage.getStartDate();
+    const today = UI.toInputDate(new Date());
+    const panel = UI.openModal({
+      variant: "modal__panel--form",
+      label: "When it all began",
+      content: `
+        <h2 class="modal__title">When it all <em>began</em></h2>
+        <form class="form" id="start-form" novalidate>
+          <label class="field">
+            <span class="field__label">The day you got together</span>
+            <input class="field__input" type="date" name="startDate" value="${UI.escape(current)}" max="${today}" required autofocus />
+            <span class="field__hint">Your counter, anniversaries and countdowns all follow this date, for both of you.</span>
+          </label>
+          <p class="form__error" id="start-error" role="alert" hidden></p>
+          <div class="modal__actions">
+            <button type="button" class="btn btn--ghost" data-cancel>Cancel</button>
+            <button type="submit" class="btn btn--primary">Save</button>
+          </div>
+        </form>`,
+    });
+    const form = panel.querySelector("#start-form");
+    const error = panel.querySelector("#start-error");
+    panel.querySelector("[data-cancel]").addEventListener("click", UI.closeModal);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const value = String(new FormData(form).get("startDate") || "");
+      if (!UI.isIsoDate(value)) {
+        error.textContent = "Pick the date you got together.";
+        error.hidden = false;
+        return;
+      }
+      if (value > today) {
+        error.textContent = "That date is in the future. Pick a day that's already happened.";
+        error.hidden = false;
+        return;
+      }
+      Storage.setProfile({ ...(Storage.getProfile() || {}), startDate: value });
+      UI.closeModal();
+      onChange();
+      Toast.show("Saved. Here's to every day since \u2764\uFE0F");
+    });
+  }
+
   function render(root) {
     const me = Auth.currentUser();
     const other = Auth.otherUser();
@@ -192,7 +236,10 @@ const Us = (() => {
     root.innerHTML = `
       <section class="us-view">
         <header class="us-header">
-          <p class="us-header__kicker">${UI.formatLongDate(CONFIG.relationshipStartDate.slice(0, 10))} — today</p>
+          <button type="button" class="us-header__kicker" id="edit-start" aria-label="Change the date you got together">
+            <span>${UI.formatLongDate(Storage.getStartDate())} — today</span>
+            ${UI.icon("edit")}
+          </button>
           <h1 class="us-header__names">${UI.escape(users[0].displayName)} <em>&amp;</em> ${UI.escape(users[1].displayName)}</h1>
         </header>
 
@@ -245,6 +292,14 @@ const Us = (() => {
                 <span class="toggle__thumb"></span>
               </button>
             </div>
+            <button type="button" class="settings-row settings-row--link" id="wallpaper-row">
+              <span class="settings-row__icon">${UI.icon("wallpaper")}</span>
+              <span class="settings-row__text">
+                <span class="settings-row__label">Chat wallpaper</span>
+                <span class="settings-row__hint">${UI.escape(Wallpaper.nameOf(Wallpaper.current()))}</span>
+              </span>
+              <span class="settings-row__chevron">${UI.icon("chevronRight")}</span>
+            </button>
             <div class="settings-row">
               <span class="settings-row__icon">${UI.icon("lock")}</span>
               <div class="settings-row__text">
@@ -293,6 +348,16 @@ const Us = (() => {
       root.querySelector("#edit-countdown").addEventListener("click", () => Countdown.openEditor(refreshCountdown));
     };
     root.querySelector("#edit-countdown").addEventListener("click", () => Countdown.openEditor(refreshCountdown));
+
+    root.querySelector("#edit-start").addEventListener("click", () =>
+      openStartDateEditor(() => Router.refresh({ quiet: true }))
+    );
+
+    root.querySelector("#wallpaper-row").addEventListener("click", () =>
+      Wallpaper.openPicker(() => {
+        root.querySelector("#wallpaper-row .settings-row__hint").textContent = Wallpaper.nameOf(Wallpaper.current());
+      })
+    );
 
     const lockToggle = root.querySelector("#lock-toggle");
     lockToggle.addEventListener("click", async () => {

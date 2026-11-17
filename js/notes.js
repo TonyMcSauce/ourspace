@@ -67,7 +67,7 @@ const Notes = (() => {
   }
 
   function nextAnniversaryIso() {
-    const start = new Date(CONFIG.relationshipStartDate);
+    const start = UI.parseLocalDate(Storage.getStartDate());
     const today = UI.startOfDay(new Date());
     let next = new Date(today.getFullYear(), start.getMonth(), start.getDate());
     if (next <= today) next = new Date(today.getFullYear() + 1, start.getMonth(), start.getDate());

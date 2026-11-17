@@ -81,7 +81,7 @@ const App = (() => {
   ];
 
   function estLabel() {
-    const d = new Date(CONFIG.relationshipStartDate);
+    const d = UI.parseLocalDate(Storage.getStartDate());
     const pad = (n) => String(n).padStart(2, "0");
     return `est. ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
   }
@@ -298,9 +298,9 @@ const App = (() => {
 
   // Which views care about which shared data, for live updates.
   const VIEW_DEPENDS = {
-    notes: ["notes"],
     memories: ["memories", "notes", "journey"],
-    us: ["messages", "notes", "memories", "journey", "favourites", "song", "countdown"],
+    notes: ["notes", "profile"],
+    us: ["messages", "notes", "memories", "journey", "favourites", "song", "countdown", "profile"],
   };
 
   function watchRemoteChanges() {
