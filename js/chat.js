@@ -118,7 +118,7 @@ const Chat = (() => {
     root.innerHTML = `
       <section class="chat-view" aria-label="Chat with ${UI.escape(other.displayName)}">
         <header class="chat-header">
-          <div class="avatar avatar--lg" aria-hidden="true">${UI.escape(other.avatarInitial)}<span class="avatar__presence"></span></div>
+          <div class="avatar avatar--lg ${other.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}" aria-hidden="true">${UI.escape(other.avatarInitial)}<span class="avatar__presence"></span></div>
           <div class="chat-header__info">
             <h1 class="chat-header__name">${UI.escape(other.displayName)}</h1>
             <p class="chat-header__status">${UI.escape(other.statusText)}</p>

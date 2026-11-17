@@ -17,7 +17,7 @@ const ThemeManager = (() => {
     const theme = resolve(pref);
     document.documentElement.setAttribute("data-theme", theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#1a1216" : "#faf5f0");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#16120f" : "#f3ece0");
   }
 
   function current() {
@@ -80,24 +80,31 @@ const App = (() => {
     { route: "us", label: "Us", icon: "us" },
   ];
 
+  function estLabel() {
+    const d = new Date(CONFIG.relationshipStartDate);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `est. ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  }
+
   function loginScreenHtml() {
     const names = Object.values(CONFIG.users).map((u) => u.displayName);
     return `
       <div class="login-screen">
         <div class="login-card">
-          <div class="login-card__mark" aria-hidden="true">${UI.icon("us")}</div>
-          <h1 class="login-card__brand">${UI.escape(CONFIG.appNameShort)}</h1>
+          <div class="seal seal--lg" aria-hidden="true">${UI.icon("us")}</div>
+          <p class="login-card__kicker">${estLabel()}</p>
+          <h1 class="login-card__brand">Our <em>Space</em></h1>
           <p class="login-card__tagline">${UI.escape(CONFIG.tagline)}</p>
 
           <form id="login-form" class="login-form" novalidate>
-            <span class="login-form__label" id="login-who">Who's coming in?</span>
+            <span class="login-form__label" id="login-who">Who's there?</span>
             <div class="login-form__people" role="radiogroup" aria-labelledby="login-who">
               ${Object.values(CONFIG.users)
                 .map(
-                  (u) => `
+                  (u, i) => `
                 <button type="button" class="person-chip" role="radio" aria-checked="false" data-user="${UI.escape(u.displayName)}">
-                  <span class="person-chip__avatar">${UI.escape(u.avatarInitial)}</span>
-                  <span>${UI.escape(u.displayName)}</span>
+                  <span class="avatar avatar--sm ${i ? "avatar--alt" : ""}">${UI.escape(u.avatarInitial)}</span>
+                  <span class="person-chip__name">${UI.escape(u.displayName)}</span>
                 </button>`
                 )
                 .join("")}
@@ -114,7 +121,7 @@ const App = (() => {
               required
             />
 
-            <label class="login-form__label" for="login-password">Password <span class="login-form__optional">(optional for now)</span></label>
+            <label class="login-form__label" for="login-password">Password <span class="login-form__optional">optional for now</span></label>
             <input
               id="login-password"
               class="login-form__input"
@@ -125,21 +132,23 @@ const App = (() => {
 
             <p class="login-form__error" id="login-error" role="alert" hidden></p>
 
-            <button type="submit" class="btn btn--primary btn--full">Enter Our Space</button>
+            <button type="submit" class="btn btn--primary btn--full">Come in</button>
           </form>
-
-          <p class="login-card__note">A private space, made for two.</p>
         </div>
+        <p class="login-screen__note">A private place, kept by two.</p>
       </div>
     `;
   }
 
-  function navItemsHtml(withLabels) {
+  function navItemsHtml(sidebar) {
     return NAV.map(
-      (n) => `
+      (n, i) => `
         <a href="#/${n.route}" class="nav-item" data-nav-item="${n.route}">
-          <span class="nav-item__icon">${UI.icon(n.icon)}</span>
-          <span class="${withLabels ? "nav-item__label" : ""}">${n.label}</span>
+          ${
+            sidebar
+              ? `<span class="nav-item__num">0${i + 1}</span><span class="nav-item__text">${n.label}</span>`
+              : `<span class="nav-item__icon">${UI.icon(n.icon)}</span><span class="nav-item__label">${n.label}</span>`
+          }
         </a>`
     ).join("");
   }
@@ -151,8 +160,9 @@ const App = (() => {
       <div class="app-shell">
         <a class="skip-link" href="#view-root">Skip to content</a>
         <aside class="sidebar" aria-label="Main navigation">
-          <p class="sidebar__brand"><span class="sidebar__mark">${UI.icon("us")}</span>${UI.escape(CONFIG.appNameShort)}</p>
-          <nav class="sidebar__nav">${navItemsHtml(false)}</nav>
+          <p class="sidebar__brand">Our <em>Space</em></p>
+          <p class="sidebar__est">${estLabel()}</p>
+          <nav class="sidebar__nav">${navItemsHtml(true)}</nav>
           <div class="sidebar__footer">
             <span class="sidebar__avatars" aria-hidden="true">
               <span class="avatar avatar--sm">${UI.escape(me.avatarInitial)}</span>
@@ -164,7 +174,7 @@ const App = (() => {
 
         <main class="view-root" id="view-root" tabindex="-1"></main>
 
-        <nav class="bottom-nav" aria-label="Main navigation">${navItemsHtml(true)}</nav>
+        <nav class="bottom-nav" aria-label="Main navigation">${navItemsHtml(false)}</nav>
       </div>
     `;
   }
