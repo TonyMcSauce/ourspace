@@ -121,7 +121,7 @@ const App = (() => {
               required
             />
 
-            <label class="login-form__label" for="login-password">Password <span class="login-form__optional">optional for now</span></label>
+            <label class="login-form__label" for="login-password">Password ${Cloud.enabled ? "" : '<span class="login-form__optional">optional in demo mode</span>'}</label>
             <input
               id="login-password"
               class="login-form__input"
@@ -208,21 +208,45 @@ const App = (() => {
       syncChips();
     });
 
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const result = Auth.login(input.value);
-      if (!result.success) {
-        errorEl.textContent = result.error;
-        errorEl.hidden = false;
-        form.classList.add("login-form--shake");
-        setTimeout(() => form.classList.remove("login-form--shake"), 400);
-        input.focus();
-        return;
-      }
+    function fail(message) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+      form.classList.add("login-form--shake");
+      setTimeout(() => form.classList.remove("login-form--shake"), 400);
+    }
+
+    function enter() {
       if (!window.location.hash || window.location.hash === "#") {
         history.replaceState(null, "", "#/chat");
       }
       renderShell();
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!Cloud.enabled) {
+        const result = Auth.login(input.value);
+        if (!result.success) {
+          fail(result.error);
+          input.focus();
+          return;
+        }
+        enter();
+        return;
+      }
+
+      const submit = form.querySelector('button[type="submit"]');
+      const label = submit.textContent;
+      submit.disabled = true;
+      submit.textContent = "Opening\u2026";
+      try {
+        await Cloud.signIn(input.value, document.getElementById("login-password").value);
+        enter();
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = label;
+        fail(err.message);
+      }
     });
   }
 
@@ -239,15 +263,68 @@ const App = (() => {
     Router.init("#view-root");
   }
 
-  function logout() {
+  async function logout() {
     UI.closeModal();
-    Auth.logout();
+    await Auth.logout();
     history.replaceState(null, "", window.location.pathname + window.location.search);
     renderShell();
   }
 
-  function init() {
+  function splashHtml(message) {
+    return `
+      <div class="splash" role="status">
+        <div class="seal seal--lg" aria-hidden="true">${UI.icon("us")}</div>
+        <p class="splash__text">${UI.escape(message)}</p>
+      </div>`;
+  }
+
+  // Which views care about which shared data, for live updates.
+  const VIEW_DEPENDS = {
+    notes: ["notes"],
+    memories: ["memories"],
+    us: ["messages", "notes", "memories", "journey", "favourites", "song"],
+  };
+
+  function watchRemoteChanges() {
+    let pending = false;
+    const refreshIfIdle = () => {
+      if (document.body.classList.contains("has-modal")) {
+        pending = true; // don't yank the page while someone is typing
+        return;
+      }
+      pending = false;
+      Router.refresh({ quiet: true });
+    };
+    Storage.onChange((kind) => {
+      if (!Auth.isAuthenticated()) return;
+      const route = Router.current();
+      if ((VIEW_DEPENDS[route] || []).includes(kind)) refreshIfIdle();
+    });
+    // Apply any deferred refresh once the modal closes.
+    new MutationObserver(() => {
+      if (pending && !document.body.classList.contains("has-modal")) refreshIfIdle();
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
+
+  async function init() {
     ThemeManager.init();
+    if (!Cloud.enabled) {
+      renderShell();
+      return;
+    }
+    appEl.innerHTML = splashHtml("Opening our space\u2026");
+    try {
+      await Cloud.init();
+      watchRemoteChanges();
+      const user = await Cloud.currentUser();
+      if (user) await Cloud.start(user);
+    } catch (err) {
+      console.error(err);
+      if (!window.firebase) {
+        appEl.innerHTML = splashHtml("We couldn't connect. Check your internet and refresh the page.");
+        return;
+      }
+    }
     renderShell();
   }
 

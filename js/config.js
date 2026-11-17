@@ -18,15 +18,34 @@ const CONFIG = {
       id: "tony",
       displayName: "Tony",
       avatarInitial: "T",
+      // Login email for this person's Firebase account.
+      email: "",
       statusText: "probably thinking about you",
     },
     babegirl: {
       id: "babegirl",
       displayName: "Babegirl",
       avatarInitial: "B",
+      email: "",
       statusText: "online",
     },
   },
+
+  // Firebase: paste the web app config from the Firebase console here
+  // (Project settings > General > Your apps). These values are public
+  // identifiers, not secrets; access is protected by firestore.rules.
+  // Leave apiKey empty to run in local demo mode on a single device.
+  firebase: {
+    apiKey: "",
+    authDomain: "",
+    projectId: "",
+    storageBucket: "",
+    messagingSenderId: "",
+    appId: "",
+  },
+
+  // Name of your shared space in the database. No need to change it.
+  spaceId: "us",
 
   // ISO date the relationship started. Drives the "Our Journey"
   // counter — change this one line and every dependent view updates.

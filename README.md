@@ -34,6 +34,7 @@ so the experience can be built and refined before Firebase is wired in.
 ```
 /
 ├── index.html
+├── firestore.rules      # database security rules (paste into Firebase)
 ├── css/
 │   ├── style.css        # design tokens, layout, components
 │   └── responsive.css   # tablet/desktop overrides
@@ -41,6 +42,7 @@ so the experience can be built and refined before Firebase is wired in.
 │   ├── config.js        # names, dates, theme — the one file to edit
 │   ├── storage.js       # the only file that touches localStorage
 │   ├── ui.js            # shared helpers: icons, modals, dates, image resizing
+│   ├── cloud.js         # Firebase sign-in, live sync and presence
 │   ├── auth.js          # demo login/logout
 │   ├── router.js        # hash-based client routing
 │   ├── chat.js          # chat feature module
@@ -116,27 +118,69 @@ isn't shared between the two of you yet. That's expected for Version 1.
 
 ---
 
-## How Firebase will replace this later
+## Connecting Firebase (so you both see the same space)
 
-Because `storage.js` is the single point of contact with persistence, the
-plan for Version 2 is to swap its internals — not its shape:
+The app has two modes and switches automatically:
 
-| Now (V1)                     | Later (V2)                          |
-|-------------------------------|--------------------------------------|
-| `localStorage` via `storage.js` | Firebase Firestore, same function names |
-| Demo login in `auth.js`       | Firebase Authentication              |
-| Photos saved in the browser   | Firebase Storage for real photos     |
+- **Demo mode** (default): everything is saved in this one browser.
+- **Shared mode**: as soon as Firebase details are added to `js/config.js`,
+  you each sign in with your own password and everything syncs live
+  between your devices: chat (with real read receipts and "online / last
+  seen"), notes, memories, milestones, your song and favourite things.
 
-Feature modules (`chat.js`, `notes.js`, etc.) call `Storage.get...()` and
-`Storage.set...()` and never localStorage directly, so this swap shouldn't
-require rewriting the UI layer.
+Everything stays on Firebase's free Spark plan. Photos are stored inside
+the database (resized to well under 1 MB each), so you don't need Firebase
+Storage or a billing account.
+
+### One-time setup (about 10 minutes)
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com),
+   click **Create a project**, give it any name, and skip Google Analytics.
+2. **Add a web app**: on the project home page click the **</>** icon, give
+   it a nickname, and register it (no hosting needed). Copy the
+   `firebaseConfig` values it shows.
+3. **Turn on sign-in**: *Build → Authentication → Get started →
+   Email/Password → Enable → Save*.
+4. **Create your two accounts**: *Authentication → Users → Add user*. Add
+   one for each of you with an email and a password you'll remember.
+5. **Create the database**: *Build → Firestore Database → Create database*.
+   Pick a location close to you and start in **production mode**.
+6. **Lock it to the two of you**: open `firestore.rules` in this repo,
+   replace the two placeholder emails with your real ones (lowercase),
+   then paste the whole file into *Firestore → Rules* and click **Publish**.
+7. **Allow your website**: *Authentication → Settings → Authorized domains
+   → Add domain*, and add your site's domain (for GitHub Pages that's
+   `<your-username>.github.io`).
+8. In `js/config.js`, paste the values from step 2 into `firebase: { ... }`
+   and add each person's email under `users`.
+
+Publish, open the site on both phones, and sign in. Your shared space
+starts empty and fresh; the demo content never gets copied across.
+
+### Where things live in Firestore
+
+```
+spaces/us/messages/{id}
+spaces/us/notes/{id}
+spaces/us/memories/{id}
+spaces/us/journey/{id}
+spaces/us/meta/favourites
+spaces/us/meta/song
+spaces/us/meta/presence
+```
+
+`js/storage.js` is still the only file feature modules talk to. In shared
+mode it keeps a live in-memory copy that `js/cloud.js` fills from Firestore
+listeners, so reads stay instant and writes sync in the background. The
+offline cache means the app opens quickly and keeps working with no signal,
+syncing again when you're back online.
 
 ---
 
 ## Security considerations
 
-- Version 1 intentionally has **no real password check**. It's a two-person
-  prototype with placeholder demo data, not a production login.
+- Demo mode has **no real password check**; it's for trying the app on one
+  device. Shared mode uses real Firebase Authentication passwords.
 - Nothing in this repository should ever contain real private messages,
   real photos, or real credentials — keep V1 data as demo data only.
 - When Firebase is introduced, real protection comes from **Firebase
@@ -151,12 +195,8 @@ require rewriting the UI layer.
 
 ## Version 2 roadmap (not built yet)
 
-- Firebase Authentication (real accounts for the two of you)
-- Firestore for messages, notes, memories, and journey events
-- Firebase Storage for photos shared across both devices
-- Real-time sync between devices
 - Voice messages in chat
-- Typing indicators and live online status
+- Typing indicators
 - Push notifications (for example when a sealed note opens)
 - Shared playlist for "Our Song"
 - Deeper relationship stats and memory organisation

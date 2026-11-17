@@ -29,7 +29,8 @@ const Auth = (() => {
     return { success: true, userId };
   }
 
-  function logout() {
+  async function logout() {
+    if (Cloud.enabled) await Cloud.signOut();
     Storage.clearSession();
   }
 
