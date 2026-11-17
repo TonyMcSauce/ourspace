@@ -265,6 +265,58 @@ const Memories = (() => {
   }
 
   // ---------------------------------------------------------------
+  // ---------------------------------------------------------------
+  // On this day: anything from this date in an earlier year
+  // ---------------------------------------------------------------
+  function onThisDay() {
+    const now = new Date();
+    const md = (d) => d.getMonth() * 100 + d.getDate();
+    const today = md(now);
+    const yearsAgo = (d) => now.getFullYear() - d.getFullYear();
+    const found = [];
+    loadMemories().forEach((m) => {
+      const d = UI.parseLocalDate(m.date);
+      if (d && md(d) === today && yearsAgo(d) > 0) found.push({ type: "memory", years: yearsAgo(d), item: m });
+    });
+    (typeof Journey !== "undefined" ? Journey.loadEvents() : []).forEach((ev) => {
+      const d = UI.parseLocalDate(ev.date);
+      if (d && md(d) === today && yearsAgo(d) > 0) found.push({ type: "milestone", years: yearsAgo(d), item: ev });
+    });
+    (typeof Notes !== "undefined" ? Notes.loadNotes() : []).forEach((n) => {
+      const d = new Date(n.date);
+      if (!n.locked && md(d) === today && yearsAgo(d) > 0) found.push({ type: "note", years: yearsAgo(d), item: n });
+    });
+    return found.sort((a, b) => (a.type === "memory" ? -1 : 1) - (b.type === "memory" ? -1 : 1))[0] || null;
+  }
+
+  function onThisDayHtml() {
+    const hit = onThisDay();
+    if (!hit) return "";
+    const ago = hit.years === 1 ? "A year ago today" : `${hit.years} years ago today`;
+    if (hit.type === "memory") {
+      const m = hit.item;
+      return `
+        <button type="button" class="on-this-day" data-memory-id="${UI.escape(m.id)}">
+          <span class="on-this-day__photo" style="${visual(m)}"></span>
+          <span class="on-this-day__body">
+            <span class="on-this-day__label">${ago}</span>
+            <span class="on-this-day__title">${UI.escape(m.title)}</span>
+            ${m.caption ? `<span class="on-this-day__text">${UI.escape(m.caption)}</span>` : ""}
+          </span>
+        </button>`;
+    }
+    const title = hit.type === "milestone" ? `${hit.item.icon} ${hit.item.label}` : hit.item.title;
+    const text = hit.type === "note" ? hit.item.message : "A milestone in your story.";
+    return `
+      <a class="on-this-day on-this-day--text" href="${hit.type === "note" ? "#/notes" : "#/us"}">
+        <span class="on-this-day__body">
+          <span class="on-this-day__label">${ago}</span>
+          <span class="on-this-day__title">${UI.escape(title)}</span>
+          <span class="on-this-day__text">${UI.escape(text)}</span>
+        </span>
+      </a>`;
+  }
+
   function render(root) {
     root.innerHTML = `
       <section class="memories-view">
@@ -275,6 +327,7 @@ const Memories = (() => {
           </div>
           <button type="button" class="btn btn--primary btn--icon-text" id="add-memory-btn">${UI.icon("plus")}<span>Add</span></button>
         </header>
+        <div id="on-this-day-host"></div>
         <div class="memories-grid"></div>
       </section>
     `;
@@ -285,6 +338,7 @@ const Memories = (() => {
     function refresh() {
       list = sorted(loadMemories());
       grid.innerHTML = addTileHtml() + list.map(cardHtml).join("");
+      root.querySelector("#on-this-day-host").innerHTML = onThisDayHtml();
       const count = root.querySelector("#memories-count");
       count.textContent = list.length
         ? `${list.length} ${list.length === 1 ? "moment" : "moments"}, kept.`
@@ -293,6 +347,12 @@ const Memories = (() => {
     refresh();
 
     root.querySelector("#add-memory-btn").addEventListener("click", () => openComposer(refresh));
+    root.querySelector("#on-this-day-host").addEventListener("click", (e) => {
+      const card = e.target.closest("[data-memory-id]");
+      if (!card) return;
+      const idx = list.findIndex((m) => m.id === card.dataset.memoryId);
+      if (idx >= 0) openViewer(list, idx, refresh);
+    });
     grid.addEventListener("click", (e) => {
       if (e.target.closest("#add-memory-tile")) {
         openComposer(refresh);

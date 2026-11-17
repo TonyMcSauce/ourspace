@@ -83,6 +83,7 @@ const CONFIG = {
     journey: "ourspace_journey",
     favourites: "ourspace_favourites",
     song: "ourspace_song",
+    countdown: "ourspace_countdown",
   },
 };
 

@@ -169,6 +169,13 @@ const Storage = (() => {
       return write("song", CONFIG.storageKeys.song, song);
     },
 
+    getCountdown() {
+      return read("countdown", CONFIG.storageKeys.countdown, null);
+    },
+    setCountdown(countdown) {
+      return write("countdown", CONFIG.storageKeys.countdown, countdown);
+    },
+
     /** { [userId]: lastSeenMs } — only populated in cloud mode. */
     getPresence() {
       return remote ? cache.presence || {} : {};

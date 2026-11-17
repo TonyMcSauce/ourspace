@@ -12,13 +12,14 @@
  *   spaces/{spaceId}/journey/{id}
  *   spaces/{spaceId}/meta/favourites
  *   spaces/{spaceId}/meta/song
+ *   spaces/{spaceId}/meta/countdown
  *   spaces/{spaceId}/meta/presence      { [userId]: lastSeenMs }
  */
 
 const Cloud = (() => {
   const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
   const COLLECTIONS = ["messages", "notes", "memories", "journey"];
-  const DOCS = ["favourites", "song", "presence"];
+  const DOCS = ["favourites", "song", "countdown", "presence"];
   const HEARTBEAT_MS = 60 * 1000;
 
   const cfg = CONFIG.firebase || {};

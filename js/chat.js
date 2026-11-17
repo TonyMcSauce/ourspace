@@ -60,22 +60,56 @@ const Chat = (() => {
     return `<span class="${cls}" aria-label="${label}" title="${label}">${ticks}</span>`;
   }
 
+  function nameOf(id, me) {
+    return id === me.id ? "You" : CONFIG.users[id]?.displayName || id;
+  }
+
+  function snippet(m) {
+    if (!m) return "";
+    if (m.kind === "nudge") return "Thinking of you";
+    const text = (m.text || "").replace(/\s+/g, " ").trim();
+    return text ? (text.length > 90 ? text.slice(0, 88) + "\u2026" : text) : m.image ? "Photo" : "";
+  }
+
+  function nudgeHtml(m, prev, me) {
+    const newDay = !prev || UI.daysBetween(prev.ts, m.ts) !== 0;
+    const who = m.from === me.id ? "You sent a heartbeat" : `${UI.escape(nameOf(m.from, me))} is thinking of you`;
+    return `
+      ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
+      <div class="nudge-line" data-msg-id="${UI.escape(m.id)}">
+        <span class="nudge-line__heart" aria-hidden="true">${UI.icon("us")}</span>
+        <span>${who}</span>
+        <span class="nudge-line__time">${formatTime(m.ts)}</span>
+      </div>`;
+  }
+
   function messageHtml(m, prev, me) {
+    if (m.kind === "nudge") return nudgeHtml(m, prev, me);
     const mine = m.from === me.id;
     const newDay = !prev || UI.daysBetween(prev.ts, m.ts) !== 0;
-    const isNewGroup = newDay || prev.from !== m.from || m.ts - prev.ts > GROUP_GAP;
+    const isNewGroup = newDay || prev.kind === "nudge" || prev.from !== m.from || m.ts - prev.ts > GROUP_GAP;
     const hearts = Array.isArray(m.hearts) ? m.hearts : [];
     const hearted = hearts.length > 0;
 
     return `
       ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
       <div class="msg ${mine ? "msg--mine" : "msg--theirs"} ${isNewGroup ? "msg--group-start" : ""} ${hearted ? "msg--hearted" : ""}" data-msg-id="${UI.escape(m.id)}">
-        <div class="msg__bubble ${m.image ? "msg__bubble--image" : ""}" tabindex="0" aria-label="${mine ? "You" : "Them"}: ${UI.escape(m.text || "Photo")}. Double tap to heart.">
+        <span class="msg__swipe-icon" aria-hidden="true">${UI.icon("reply")}</span>
+        <div class="msg__bubble ${m.image ? "msg__bubble--image" : ""}" tabindex="0" aria-label="${mine ? "You" : "Them"}: ${UI.escape(m.text || "Photo")}. Double tap to heart, swipe right to reply.">
+          ${
+            m.replyTo
+              ? `<button type="button" class="msg__quote" data-jump="${UI.escape(m.replyTo.id)}">
+                  <span class="msg__quote-who">${UI.escape(nameOf(m.replyTo.from, me))}</span>
+                  <span class="msg__quote-text">${UI.escape(m.replyTo.text || "Photo")}</span>
+                </button>`
+              : ""
+          }
           ${m.image ? `<button type="button" class="msg__image" data-open-image><img src="${UI.escape(m.image)}" alt="Shared photo" decoding="async" /></button>` : ""}
           ${m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
           <span class="msg__meta">${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
           ${hearted ? `<span class="msg__heart" aria-label="Hearted">❤️</span>` : ""}
         </div>
+        <button type="button" class="msg__reply-btn" data-reply aria-label="Reply">${UI.icon("reply")}</button>
       </div>
     `;
   }
@@ -123,7 +157,11 @@ const Chat = (() => {
             <h1 class="chat-header__name">${UI.escape(other.displayName)}</h1>
             <p class="chat-header__status" id="chat-status">${UI.escape(statusFor(other))}</p>
           </div>
+          <button type="button" class="nudge-btn" id="nudge-btn" aria-label="Send ${UI.escape(other.displayName)} a heartbeat">
+            ${UI.icon("us")}<span>Thinking of you</span>
+          </button>
         </header>
+        ${countdownStripHtml()}
 
         <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions"></div>
 
@@ -135,9 +173,16 @@ const Chat = (() => {
           <div class="popover attach-menu" id="attach-menu" hidden>
             <button type="button" class="attach-menu__item" data-attach="photos">${UI.icon("image")}<span>Photo</span></button>
             <button type="button" class="attach-menu__item" data-attach="camera">${UI.icon("camera")}<span>Camera</span></button>
-            <button type="button" class="attach-menu__item" data-attach="voice">${UI.icon("mic")}<span>Voice note</span><em>Soon</em></button>
           </div>
 
+          <div class="reply-bar" id="reply-bar" hidden>
+            <span class="reply-bar__icon" aria-hidden="true">${UI.icon("reply")}</span>
+            <span class="reply-bar__body">
+              <span class="reply-bar__who"></span>
+              <span class="reply-bar__text"></span>
+            </span>
+            <button type="button" class="icon-btn icon-btn--sm" id="reply-cancel" aria-label="Cancel reply">${UI.icon("close")}</button>
+          </div>
           <form class="chat-input" id="chat-input-form" autocomplete="off">
             <button type="button" class="icon-btn" id="emoji-btn" aria-label="Emoji" aria-expanded="false" aria-controls="emoji-picker">${UI.icon("smile")}</button>
             <textarea
@@ -202,8 +247,29 @@ const Chat = (() => {
       });
     }
 
+    const replyBar = root.querySelector("#reply-bar");
+    let replyTo = null;
+    function startReply(id) {
+      const target = loadMessages().find((m) => m.id === id);
+      if (!target || target.kind === "nudge") return;
+      replyTo = { id: target.id, from: target.from, text: snippet(target) };
+      replyBar.querySelector(".reply-bar__who").textContent = target.from === me.id ? "Replying to yourself" : `Replying to ${nameOf(target.from, me)}`;
+      replyBar.querySelector(".reply-bar__text").textContent = replyTo.text;
+      replyBar.hidden = false;
+      textarea.focus();
+    }
+    function cancelReply() {
+      replyTo = null;
+      replyBar.hidden = true;
+    }
+    root.querySelector("#reply-cancel").addEventListener("click", () => {
+      cancelReply();
+      textarea.focus();
+    });
+
     function send(partial) {
       const msg = { id: UI.uid("m"), from: me.id, text: "", ts: Date.now(), status: "sent", ...partial };
+      if (replyTo && partial.kind !== "nudge") msg.replyTo = replyTo;
       const next = [...loadMessages(), msg];
       if (!saveMessages(next)) {
         Toast.show("Couldn't save that, the device storage is full.");
@@ -212,8 +278,20 @@ const Chat = (() => {
       messages = next;
       renderMessageList(messagesEl, messages, me);
       if (!Cloud.isActive()) progressStatus(msg.id);
+      if (partial.kind !== "nudge") cancelReply();
       return true;
     }
+
+    // "Thinking of you" heartbeat
+    const nudgeBtn = root.querySelector("#nudge-btn");
+    nudgeBtn.addEventListener("click", () => {
+      if (nudgeBtn.disabled) return;
+      if (!send({ kind: "nudge" })) return;
+      burstHearts(nudgeBtn);
+      Toast.show(`A little heartbeat is on its way to ${other.displayName}`);
+      nudgeBtn.disabled = true;
+      setTimeout(() => (nudgeBtn.disabled = false), 8000);
+    });
 
     textarea.addEventListener("input", syncComposer);
     textarea.addEventListener("keydown", (e) => {
@@ -321,11 +399,33 @@ const Chat = (() => {
       }
     }
 
+    function jumpTo(id) {
+      const row = messagesEl.querySelector(`[data-msg-id="${CSS.escape(id)}"]`);
+      if (!row) {
+        Toast.show("That message is no longer here.");
+        return;
+      }
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      row.classList.remove("msg--flash");
+      void row.offsetWidth;
+      row.classList.add("msg--flash");
+    }
+
     let lastTap = { id: null, time: 0 };
     messagesEl.addEventListener("click", (e) => {
+      const replyBtn = e.target.closest("[data-reply]");
+      if (replyBtn) {
+        startReply(replyBtn.closest("[data-msg-id]").dataset.msgId);
+        return;
+      }
+      const quote = e.target.closest("[data-jump]");
+      if (quote) {
+        jumpTo(quote.dataset.jump);
+        return;
+      }
       const imageBtn = e.target.closest("[data-open-image]");
       const row = e.target.closest("[data-msg-id]");
-      if (!row) return;
+      if (!row || row.classList.contains("nudge-line")) return;
       const id = row.dataset.msgId;
       const now = Date.now();
       if (lastTap.id === id && now - lastTap.time < 320) {
@@ -354,6 +454,46 @@ const Chat = (() => {
     // Focus the composer on wider screens, where it won't pop a keyboard.
     if (window.matchMedia("(min-width: 980px)").matches) textarea.focus({ preventScroll: true });
 
+    // Swipe a bubble to the right to reply (touch screens).
+    let swipe = null;
+    messagesEl.addEventListener(
+      "touchstart",
+      (e) => {
+        const row = e.target.closest(".msg");
+        if (!row || e.touches.length !== 1) return;
+        swipe = { row, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, locked: null };
+      },
+      { passive: true }
+    );
+    messagesEl.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!swipe) return;
+        const dx = e.touches[0].clientX - swipe.x;
+        const dy = e.touches[0].clientY - swipe.y;
+        if (swipe.locked === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) swipe.locked = Math.abs(dx) > Math.abs(dy) && dx > 0;
+        if (!swipe.locked) return;
+        swipe.dx = Math.max(0, Math.min(84, dx * 0.6));
+        swipe.row.style.setProperty("--swipe", `${swipe.dx}px`);
+        swipe.row.classList.add("msg--swiping");
+        swipe.row.classList.toggle("msg--swipe-ready", swipe.dx > 52);
+      },
+      { passive: true }
+    );
+    const endSwipe = () => {
+      if (!swipe) return;
+      const { row, dx } = swipe;
+      row.classList.remove("msg--swiping", "msg--swipe-ready");
+      row.style.removeProperty("--swipe");
+      if (dx > 52) {
+        if (navigator.vibrate) navigator.vibrate(10);
+        startReply(row.dataset.msgId);
+      }
+      swipe = null;
+    };
+    messagesEl.addEventListener("touchend", endSwipe);
+    messagesEl.addEventListener("touchcancel", endSwipe);
+
     // Live updates from the other person (cloud mode).
     const statusEl = root.querySelector("#chat-status");
     const presenceDot = root.querySelector(".avatar__presence");
@@ -374,12 +514,85 @@ const Chat = (() => {
         return;
       }
       if (kind === "presence") paintPresence();
+      if (kind === "countdown") {
+        const strip = root.querySelector(".countdown-strip");
+        const fresh = document.createElement("div");
+        fresh.innerHTML = countdownStripHtml();
+        if (strip) strip.replaceWith(...fresh.childNodes);
+        else root.querySelector(".chat-header").after(...fresh.childNodes);
+      }
       if (kind !== "messages") return;
       const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
       messages = loadMessages();
       renderMessageList(messagesEl, messages, me, { stickToBottom: nearBottom });
     });
     markSeen();
+  }
+
+  // ---------------------------------------------------------------
+  // Countdown strip, heart burst, incoming heartbeat
+  // ---------------------------------------------------------------
+  function countdownStripHtml() {
+    const c = Countdown.describe();
+    if (!c || c.past) return "";
+    return `
+      <a class="countdown-strip" href="#/us">
+        <span class="countdown-strip__when">${UI.escape(c.short)}</span>
+        <span class="countdown-strip__what">until ${UI.escape(c.title)}</span>
+      </a>`;
+  }
+
+  function burstHearts(from) {
+    const rect = from.getBoundingClientRect();
+    for (let i = 0; i < 7; i++) {
+      const h = document.createElement("span");
+      h.className = "heart-burst";
+      h.innerHTML = UI.icon("us");
+      h.style.left = `${rect.left + rect.width / 2}px`;
+      h.style.top = `${rect.top + rect.height / 2}px`;
+      h.style.setProperty("--dx", `${(Math.random() - 0.5) * 140}px`);
+      h.style.setProperty("--dy", `${-60 - Math.random() * 110}px`);
+      h.style.setProperty("--r", `${(Math.random() - 0.5) * 60}deg`);
+      h.style.animationDelay = `${i * 45}ms`;
+      document.body.appendChild(h);
+      setTimeout(() => h.remove(), 1400);
+    }
+  }
+
+  const NUDGE_SEEN_KEY = "ourspace_nudge_seen";
+  function showHeartbeat(from) {
+    if (document.querySelector(".heartbeat")) return;
+    const el = document.createElement("div");
+    el.className = "heartbeat";
+    el.setAttribute("role", "alert");
+    el.innerHTML = `
+      <div class="heartbeat__seal seal" aria-hidden="true">${UI.icon("us")}</div>
+      <p class="heartbeat__text"><em>${UI.escape(from.displayName)}</em> is thinking of you</p>
+      <p class="heartbeat__hint">Tap anywhere</p>`;
+    const close = () => {
+      el.classList.add("heartbeat--leaving");
+      setTimeout(() => el.remove(), 400);
+    };
+    el.addEventListener("click", close);
+    document.body.appendChild(el);
+    if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+    setTimeout(close, 5200);
+  }
+
+  function checkIncomingNudges() {
+    if (!Cloud.isActive() || document.body.classList.contains("is-locked")) return;
+    const me = Auth.currentUser();
+    if (!me) return;
+    let seen = 0;
+    try {
+      seen = Number(localStorage.getItem(NUDGE_SEEN_KEY) || 0);
+    } catch {}
+    const fresh = loadMessages().filter((m) => m.kind === "nudge" && m.from !== me.id && m.ts > seen && Date.now() - m.ts < 10 * 60 * 1000);
+    const newest = loadMessages().reduce((t, m) => (m.kind === "nudge" && m.from !== me.id ? Math.max(t, m.ts) : t), seen);
+    try {
+      localStorage.setItem(NUDGE_SEEN_KEY, String(newest));
+    } catch {}
+    if (fresh.length && document.visibilityState === "visible") showHeartbeat(CONFIG.users[fresh[fresh.length - 1].from]);
   }
 
   // ---------------------------------------------------------------
@@ -424,11 +637,15 @@ const Chat = (() => {
   }
 
   Storage.onChange((kind) => {
-    if (kind === "messages") markSeen();
+    if (kind === "messages") {
+      markSeen();
+      checkIncomingNudges();
+    }
   });
+  document.addEventListener("visibilitychange", checkIncomingNudges);
   document.addEventListener("visibilitychange", markSeen);
 
-  return { render, loadMessages };
+  return { render, loadMessages, checkIncomingNudges };
 })();
 
 Router.register("chat", Chat.render);
