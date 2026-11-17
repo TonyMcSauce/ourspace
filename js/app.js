@@ -6,23 +6,43 @@
  */
 
 const ThemeManager = (() => {
-  function apply(theme) {
+  const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+  function resolve(pref) {
+    if (pref === "dark" || pref === "light") return pref;
+    return media && media.matches ? "dark" : "light";
+  }
+
+  function apply(pref) {
+    const theme = resolve(pref);
     document.documentElement.setAttribute("data-theme", theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#1a1216" : "#faf5f0");
+  }
+
+  function current() {
+    return document.documentElement.getAttribute("data-theme") || "light";
   }
 
   function init() {
-    const saved = Storage.getTheme();
-    apply(saved);
+    apply(Storage.getTheme());
+    if (media) {
+      const onChange = () => {
+        if (Storage.getTheme() === "system") apply("system");
+      };
+      if (media.addEventListener) media.addEventListener("change", onChange);
+      else if (media.addListener) media.addListener(onChange);
+    }
   }
 
   function toggle() {
-    const current = document.documentElement.getAttribute("data-theme");
-    const next = current === "dark" ? "light" : "dark";
+    const next = current() === "dark" ? "light" : "dark";
     apply(next);
     Storage.setTheme(next);
+    return next;
   }
 
-  return { init, apply, toggle };
+  return { init, apply, toggle, current };
 })();
 
 const Toast = (() => {
@@ -35,6 +55,7 @@ const Toast = (() => {
       el.id = "toast";
       el.className = "toast";
       el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
       document.body.appendChild(el);
     }
     el.textContent = message;
@@ -43,7 +64,7 @@ const Toast = (() => {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
       el.classList.remove("toast--visible");
-    }, 2600);
+    }, 2800);
   }
 
   return { show };
@@ -52,77 +73,98 @@ const Toast = (() => {
 const App = (() => {
   const appEl = document.getElementById("app");
 
+  const NAV = [
+    { route: "chat", label: "Chat", icon: "chat" },
+    { route: "notes", label: "Notes", icon: "notes" },
+    { route: "memories", label: "Memories", icon: "memories" },
+    { route: "us", label: "Us", icon: "us" },
+  ];
+
   function loginScreenHtml() {
+    const names = Object.values(CONFIG.users).map((u) => u.displayName);
     return `
       <div class="login-screen">
         <div class="login-card">
-          <p class="login-card__brand">\u2764\uFE0F ${CONFIG.appName}</p>
-          <p class="login-card__tagline">${CONFIG.tagline}</p>
+          <div class="login-card__mark" aria-hidden="true">${UI.icon("us")}</div>
+          <h1 class="login-card__brand">${UI.escape(CONFIG.appNameShort)}</h1>
+          <p class="login-card__tagline">${UI.escape(CONFIG.tagline)}</p>
 
-          <form id="login-form" class="login-form">
+          <form id="login-form" class="login-form" novalidate>
+            <span class="login-form__label" id="login-who">Who's coming in?</span>
+            <div class="login-form__people" role="radiogroup" aria-labelledby="login-who">
+              ${Object.values(CONFIG.users)
+                .map(
+                  (u) => `
+                <button type="button" class="person-chip" role="radio" aria-checked="false" data-user="${UI.escape(u.displayName)}">
+                  <span class="person-chip__avatar">${UI.escape(u.avatarInitial)}</span>
+                  <span>${UI.escape(u.displayName)}</span>
+                </button>`
+                )
+                .join("")}
+            </div>
+
             <label class="login-form__label" for="login-username">Name</label>
             <input
               id="login-username"
               class="login-form__input"
               type="text"
-              placeholder="Tony or Babegirl"
+              placeholder="${UI.escape(names.join(" or "))}"
               autocomplete="username"
+              autocapitalize="words"
               required
             />
 
-            <label class="login-form__label" for="login-password">Password</label>
+            <label class="login-form__label" for="login-password">Password <span class="login-form__optional">(optional for now)</span></label>
             <input
               id="login-password"
               class="login-form__input"
               type="password"
-              placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+              placeholder="••••••••"
               autocomplete="current-password"
             />
 
-            <p class="login-form__error" id="login-error" hidden></p>
+            <p class="login-form__error" id="login-error" role="alert" hidden></p>
 
             <button type="submit" class="btn btn--primary btn--full">Enter Our Space</button>
           </form>
 
-          <p class="login-card__note">Private space for two.</p>
+          <p class="login-card__note">A private space, made for two.</p>
         </div>
       </div>
     `;
   }
 
+  function navItemsHtml(withLabels) {
+    return NAV.map(
+      (n) => `
+        <a href="#/${n.route}" class="nav-item" data-nav-item="${n.route}">
+          <span class="nav-item__icon">${UI.icon(n.icon)}</span>
+          <span class="${withLabels ? "nav-item__label" : ""}">${n.label}</span>
+        </a>`
+    ).join("");
+  }
+
   function shellHtml() {
+    const me = Auth.currentUser();
+    const other = Auth.otherUser();
     return `
       <div class="app-shell">
+        <a class="skip-link" href="#view-root">Skip to content</a>
         <aside class="sidebar" aria-label="Main navigation">
-          <p class="sidebar__brand">\u2764\uFE0F ${CONFIG.appName}</p>
-          <nav class="sidebar__nav">
-            <a href="#/chat" class="nav-item" data-nav-item="chat"><span class="nav-item__icon">\uD83D\uDCAC</span><span>Chat</span></a>
-            <a href="#/notes" class="nav-item" data-nav-item="notes"><span class="nav-item__icon">\u2764\uFE0F</span><span>Notes</span></a>
-            <a href="#/memories" class="nav-item" data-nav-item="memories"><span class="nav-item__icon">\uD83D\uDCF8</span><span>Memories</span></a>
-            <a href="#/us" class="nav-item" data-nav-item="us"><span class="nav-item__icon">\uD83D\uDC6B</span><span>Us</span></a>
-          </nav>
+          <p class="sidebar__brand"><span class="sidebar__mark">${UI.icon("us")}</span>${UI.escape(CONFIG.appNameShort)}</p>
+          <nav class="sidebar__nav">${navItemsHtml(false)}</nav>
+          <div class="sidebar__footer">
+            <span class="sidebar__avatars" aria-hidden="true">
+              <span class="avatar avatar--sm">${UI.escape(me.avatarInitial)}</span>
+              <span class="avatar avatar--sm avatar--alt">${UI.escape(other.avatarInitial)}</span>
+            </span>
+            <span class="sidebar__who">Signed in as <strong>${UI.escape(me.displayName)}</strong></span>
+          </div>
         </aside>
 
-        <main class="view-root" id="view-root"></main>
+        <main class="view-root" id="view-root" tabindex="-1"></main>
 
-        <nav class="bottom-nav" aria-label="Main navigation">
-          <a href="#/chat" class="nav-item" data-nav-item="chat">
-            <span class="nav-item__icon">\uD83D\uDCAC</span>
-            <span class="nav-item__label">Chat</span>
-          </a>
-          <a href="#/notes" class="nav-item" data-nav-item="notes">
-            <span class="nav-item__icon">\u2764\uFE0F</span>
-            <span class="nav-item__label">Notes</span>
-          </a>
-          <a href="#/memories" class="nav-item" data-nav-item="memories">
-            <span class="nav-item__icon">\uD83D\uDCF8</span>
-            <span class="nav-item__label">Memories</span>
-          </a>
-          <a href="#/us" class="nav-item" data-nav-item="us">
-            <span class="nav-item__icon">\uD83D\uDC6B</span>
-            <span class="nav-item__label">Us</span>
-          </a>
-        </nav>
+        <nav class="bottom-nav" aria-label="Main navigation">${navItemsHtml(true)}</nav>
       </div>
     `;
   }
@@ -131,17 +173,44 @@ const App = (() => {
     appEl.innerHTML = loginScreenHtml();
     const form = document.getElementById("login-form");
     const errorEl = document.getElementById("login-error");
+    const input = document.getElementById("login-username");
+    const chips = form.querySelectorAll(".person-chip");
+
+    function syncChips() {
+      const value = input.value.trim().toLowerCase();
+      chips.forEach((chip) => {
+        const on = chip.dataset.user.toLowerCase() === value;
+        chip.classList.toggle("person-chip--active", on);
+        chip.setAttribute("aria-checked", String(on));
+      });
+    }
+
+    chips.forEach((chip) =>
+      chip.addEventListener("click", () => {
+        input.value = chip.dataset.user;
+        errorEl.hidden = true;
+        syncChips();
+        document.getElementById("login-password").focus();
+      })
+    );
+    input.addEventListener("input", () => {
+      errorEl.hidden = true;
+      syncChips();
+    });
 
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const username = document.getElementById("login-username").value;
-      const result = Auth.login(username);
+      const result = Auth.login(input.value);
       if (!result.success) {
         errorEl.textContent = result.error;
         errorEl.hidden = false;
         form.classList.add("login-form--shake");
         setTimeout(() => form.classList.remove("login-form--shake"), 400);
+        input.focus();
         return;
+      }
+      if (!window.location.hash || window.location.hash === "#") {
+        history.replaceState(null, "", "#/chat");
       }
       renderShell();
     });
@@ -149,12 +218,22 @@ const App = (() => {
 
   function renderShell() {
     if (!Auth.isAuthenticated()) {
+      document.title = CONFIG.appNameShort;
       renderLogin();
       return;
     }
     appEl.innerHTML = shellHtml();
-    window.location.hash = window.location.hash || "#/chat";
+    if (!window.location.hash || window.location.hash === "#") {
+      history.replaceState(null, "", "#/chat");
+    }
     Router.init("#view-root");
+  }
+
+  function logout() {
+    UI.closeModal();
+    Auth.logout();
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    renderShell();
   }
 
   function init() {
@@ -162,7 +241,7 @@ const App = (() => {
     renderShell();
   }
 
-  return { init, renderShell };
+  return { init, renderShell, logout };
 })();
 
 document.addEventListener("DOMContentLoaded", App.init);

@@ -84,6 +84,20 @@ const Storage = (() => {
       return safeSet(CONFIG.storageKeys.journey, events);
     },
 
+    // --- Favourite things / Our Song ----------------------------------
+    getFavourites() {
+      return safeGet(CONFIG.storageKeys.favourites, null);
+    },
+    setFavourites(favourites) {
+      return safeSet(CONFIG.storageKeys.favourites, favourites);
+    },
+    getSong() {
+      return safeGet(CONFIG.storageKeys.song, null);
+    },
+    setSong(song) {
+      return safeSet(CONFIG.storageKeys.song, song);
+    },
+
     // --- Theme ------------------------------------------------------
     getTheme() {
       return safeGet(CONFIG.theme.storageKey, CONFIG.theme.default);

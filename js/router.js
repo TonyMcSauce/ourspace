@@ -9,6 +9,7 @@ const Router = (() => {
   const routes = {};
   let currentRoute = null;
   let rootEl = null;
+  let listening = false;
 
   function register(name, renderFn) {
     routes[name] = renderFn;
@@ -37,10 +38,15 @@ const Router = (() => {
     if (!rootEl) return;
 
     if (name === currentRoute) return;
+    const isFirstRender = currentRoute === null;
     currentRoute = name;
 
-    rootEl.classList.add("view-root--leaving");
-    await new Promise((r) => setTimeout(r, 120));
+    if (!isFirstRender) {
+      rootEl.classList.add("view-root--leaving");
+      await new Promise((r) => setTimeout(r, 120));
+      // A newer navigation (or logout) may have happened while waiting.
+      if (currentRoute !== name || !document.contains(rootEl)) return;
+    }
 
     rootEl.innerHTML = "";
     rootEl.classList.remove("view-root--leaving");
@@ -50,6 +56,8 @@ const Router = (() => {
     if (renderFn) renderFn(rootEl);
 
     updateNavIndicator(name);
+    const titles = { chat: "Chat", notes: "Love Notes", memories: "Memories", us: "Us" };
+    document.title = `${titles[name] || ""} \u00B7 ${CONFIG.appNameShort}`;
     requestAnimationFrame(() => {
       rootEl.classList.remove("view-root--entering");
     });
@@ -58,10 +66,21 @@ const Router = (() => {
   }
 
   function init(rootSelector) {
+    // Safe to call again after logout/login: the shell is rebuilt, so
+    // reset the cached route and only ever attach one listener.
     rootEl = document.querySelector(rootSelector);
-    window.addEventListener("hashchange", render);
+    currentRoute = null;
+    if (!listening) {
+      window.addEventListener("hashchange", render);
+      listening = true;
+    }
     render();
   }
 
-  return { register, navigate, init, render };
+  function refresh() {
+    currentRoute = null;
+    render();
+  }
+
+  return { register, navigate, init, render, refresh };
 })();
