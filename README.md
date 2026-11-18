@@ -12,9 +12,10 @@ so the experience can be built and refined before Firebase is wired in.
 
 ## What's here
 
-- **Chat**: day separators, emoji picker, photos from the gallery or camera,
-  double tap to heart, swipe a message to reply to it, real read receipts,
-  and "online / last seen".
+- **Chat**: day separators, emoji picker, photos from the gallery or camera
+  (an in-app camera on laptops), voice notes up to two minutes with a
+  waveform player and 1x/1.5x/2x speed, double tap to heart, swipe a message
+  to reply to it, real read receipts, and "online / last seen".
 - **Thinking of you**: one tap sends a heartbeat that fills the other
   person's screen when they have the app open.
 - **Love Notes**: letters readable right away, sealed "open when…" notes,
@@ -59,6 +60,8 @@ Everything runs on Firebase's free Spark plan. Nothing here needs a card.
 │   ├── lock.js          # optional passcode lock
 │   ├── countdown.js     # "next time together" countdown
 │   ├── wallpaper.js     # chat wallpapers and picker
+│   ├── voice.js         # voice note recording and playback
+│   ├── camera.js        # in-app camera for laptops
 │   ├── chat.js          # chat feature module
 │   ├── notes.js         # love notes feature module
 │   ├── memories.js      # memories gallery feature module
@@ -221,7 +224,6 @@ syncing again when you're back online.
 
 - Voice messages in chat
 - Typing indicators
-- Voice notes
 - Push notifications (for example when a sealed note opens)
 - Shared playlist for "Our Song"
 - Deeper relationship stats and memory organisation

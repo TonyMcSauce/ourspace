@@ -67,6 +67,7 @@ const Chat = (() => {
   function snippet(m) {
     if (!m) return "";
     if (m.kind === "nudge") return "Thinking of you";
+    if (m.kind === "voice") return `Voice note \u00B7 ${Voice.fmt(m.duration)}`;
     const text = (m.text || "").replace(/\s+/g, " ").trim();
     return text ? (text.length > 90 ? text.slice(0, 88) + "\u2026" : text) : m.image ? "Photo" : "";
   }
@@ -95,7 +96,7 @@ const Chat = (() => {
       ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
       <div class="msg ${mine ? "msg--mine" : "msg--theirs"} ${isNewGroup ? "msg--group-start" : ""} ${hearted ? "msg--hearted" : ""}" data-msg-id="${UI.escape(m.id)}">
         <span class="msg__swipe-icon" aria-hidden="true">${UI.icon("reply")}</span>
-        <div class="msg__bubble ${m.image ? "msg__bubble--image" : ""}" tabindex="0" aria-label="${mine ? "You" : "Them"}: ${UI.escape(m.text || "Photo")}. Double tap to heart, swipe right to reply.">
+        <div class="msg__bubble ${m.image ? "msg__bubble--image" : ""} ${m.kind === "voice" ? "msg__bubble--voice" : ""}" tabindex="0" aria-label="${mine ? "You" : "Them"}: ${UI.escape(m.text || "Photo")}. Double tap to heart, swipe right to reply.">
           ${
             m.replyTo
               ? `<button type="button" class="msg__quote" data-jump="${UI.escape(m.replyTo.id)}">
@@ -104,6 +105,7 @@ const Chat = (() => {
                 </button>`
               : ""
           }
+          ${m.kind === "voice" ? Voice.playerHtml(m) : ""}
           ${m.image ? `<button type="button" class="msg__image" data-open-image><img src="${UI.escape(m.image)}" alt="Shared photo" decoding="async" /></button>` : ""}
           ${m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
           <span class="msg__meta">${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
@@ -128,6 +130,7 @@ const Chat = (() => {
     const prevScroll = container.scrollTop;
     container.innerHTML = messages.map((m, i) => messageHtml(m, messages[i - 1], me)).join("");
     container.scrollTop = stickToBottom ? container.scrollHeight : prevScroll;
+    Voice.restore(container);
     if (stickToBottom) {
       // Photos change height once decoded; keep the latest message in view.
       container.querySelectorAll(".msg__image img").forEach((img) => {
@@ -197,8 +200,17 @@ const Chat = (() => {
               aria-label="Message"
             ></textarea>
             <button type="button" class="icon-btn" id="attach-btn" aria-label="Attach" aria-expanded="false" aria-controls="attach-menu">${UI.icon("clip")}</button>
-            <button type="submit" class="send-btn" aria-label="Send message" disabled>${UI.icon("send")}</button>
+            <button type="submit" class="send-btn" aria-label="Send message" hidden>${UI.icon("send")}</button>
+            <button type="button" class="send-btn mic-btn" id="mic-btn" aria-label="Record a voice note">${UI.icon("mic")}</button>
           </form>
+          <div class="recorder" id="recorder" hidden>
+            <button type="button" class="icon-btn recorder__cancel" id="rec-cancel" aria-label="Delete recording">${UI.icon("trash")}</button>
+            <span class="recorder__dot" aria-hidden="true"></span>
+            <span class="recorder__time" id="rec-time" aria-live="off">0:00</span>
+            <span class="recorder__hint">Recording\u2026 tap send when you're done</span>
+            <span class="recorder__meter" id="rec-meter" aria-hidden="true">${"<span></span>".repeat(28)}</span>
+            <button type="button" class="send-btn" id="rec-send" aria-label="Send voice note">${UI.icon("send")}</button>
+          </div>
           <input type="file" accept="image/*" id="chat-photo-input" hidden />
           <input type="file" accept="image/*" capture="environment" id="chat-camera-input" hidden />
         </div>
@@ -219,11 +231,17 @@ const Chat = (() => {
     Wallpaper.apply(root.querySelector(".chat-view"));
     renderMessageList(messagesEl, messages, me);
 
+    const micBtn = root.querySelector("#mic-btn");
     function syncComposer() {
       textarea.style.height = "auto";
       textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
-      sendBtn.disabled = textarea.value.trim().length === 0;
+      const hasText = textarea.value.trim().length > 0;
+      // Like WhatsApp: the mic becomes the send button once you type.
+      sendBtn.hidden = !hasText && Voice.supported();
+      sendBtn.disabled = !hasText;
+      micBtn.hidden = hasText || !Voice.supported();
     }
+    syncComposer();
 
     function setPopover(el, btn, open) {
       el.hidden = !open;
@@ -352,15 +370,19 @@ const Chat = (() => {
       closePopovers();
       const kind = btn.dataset.attach;
       if (kind === "photos") photoInput.click();
-      else if (kind === "camera") cameraInput.click();
+      else if (kind === "camera") {
+        if (Camera.prefersNative() || !Camera.available()) cameraInput.click();
+        else Camera.capture().then((file) => file && sendPhotoFile(file));
+      }
       else if (kind === "wallpaper") Wallpaper.openPicker(() => Wallpaper.apply(root.querySelector(".chat-view")));
-      else Toast.show("Voice notes are on the way ❤️");
     });
 
     async function handlePhoto(input) {
       const file = input.files && input.files[0];
       input.value = "";
-      if (!file) return;
+      if (file) sendPhotoFile(file);
+    }
+    async function sendPhotoFile(file) {
       try {
         const image = await UI.readImage(file, { maxSize: 1080, quality: 0.8 });
         const caption = textarea.value.trim();
@@ -429,6 +451,7 @@ const Chat = (() => {
         jumpTo(quote.dataset.jump);
         return;
       }
+      if (e.target.closest(".voice")) return;
       const imageBtn = e.target.closest("[data-open-image]");
       const row = e.target.closest("[data-msg-id]");
       if (!row || row.classList.contains("nudge-line")) return;
@@ -514,6 +537,81 @@ const Chat = (() => {
     messagesEl.addEventListener("click", (e) => {
       if (!e.target.closest("[data-reply], [data-jump], [data-open-image]")) dismissKeyboard();
     });
+
+    // Voice notes: tap the mic, talk, then send or bin it.
+    Voice.bind(messagesEl, (id) => loadMessages().find((m) => m.id === id));
+    const composer = root.querySelector(".chat-composer");
+    const recorderEl = root.querySelector("#recorder");
+    const recTime = root.querySelector("#rec-time");
+    const meterBars = Array.from(root.querySelectorAll("#rec-meter span"));
+    let recording = null;
+    let meter = [];
+
+    function showRecorder(on) {
+      recorderEl.hidden = !on;
+      composer.classList.toggle("chat-composer--recording", on);
+      if (!on) {
+        meter = [];
+        meterBars.forEach((b) => b.style.setProperty("--h", 0.08));
+        recTime.textContent = "0:00";
+      }
+    }
+
+    async function startRecording() {
+      if (recording) return;
+      textarea.blur();
+      closePopovers();
+      Voice.stopPlayback();
+      showRecorder(true);
+      try {
+        recording = await Voice.start({
+          onLevel: (level) => {
+            meter.push(level);
+            if (meter.length > meterBars.length) meter.shift();
+            const offset = meterBars.length - meter.length;
+            meterBars.forEach((bar, i) => bar.style.setProperty("--h", Math.max(0.08, meter[i - offset] || 0)));
+          },
+          onTick: (ms) => (recTime.textContent = Voice.fmt(ms / 1000)),
+          onLimit: () => finishRecording(),
+        });
+        if (!document.contains(recorderEl)) {
+          recording.cancel();
+          recording = null;
+        } else if (navigator.vibrate) navigator.vibrate(15);
+      } catch (err) {
+        showRecorder(false);
+        Toast.show(err.message);
+      }
+    }
+
+    async function finishRecording() {
+      if (!recording) return;
+      const rec = recording;
+      recording = null;
+      try {
+        const note = await rec.stop();
+        send({ kind: "voice", ...note });
+      } catch (err) {
+        Toast.show(err.message);
+      } finally {
+        showRecorder(false);
+      }
+    }
+
+    function cancelRecording() {
+      if (!recording) return;
+      recording.cancel();
+      recording = null;
+      showRecorder(false);
+    }
+
+    micBtn.addEventListener("click", startRecording);
+    root.querySelector("#rec-send").addEventListener("click", finishRecording);
+    root.querySelector("#rec-cancel").addEventListener("click", cancelRecording);
+    recorderEl.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") cancelRecording();
+    });
+    window.addEventListener("hashchange", cancelRecording, { once: true });
 
     // Swipe a bubble to the right to reply (touch screens).
     let swipe = null;
