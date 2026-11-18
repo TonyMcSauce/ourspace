@@ -78,6 +78,10 @@ const CONFIG = {
   storageKeys: {
     session: "ourspace_session",
     messages: "ourspace_messages",
+    jar: "ourspace_jar",
+    capsules: "ourspace_capsules",
+    lists: "ourspace_lists",
+    listItems: "ourspace_list_items",
     notes: "ourspace_notes",
     memories: "ourspace_memories",
     journey: "ourspace_journey",

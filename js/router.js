@@ -56,7 +56,7 @@ const Router = (() => {
     if (renderFn) renderFn(rootEl);
 
     updateNavIndicator(name);
-    const titles = { chat: "Chat", notes: "Love Notes", memories: "Memories", us: "Us" };
+    const titles = { chat: "Chat", notes: "Love Notes", memories: "Memories", together: "Together", us: "Us" };
     document.title = `${titles[name] || ""} \u00B7 ${CONFIG.appNameShort}`;
     requestAnimationFrame(() => {
       rootEl.classList.remove("view-root--entering");

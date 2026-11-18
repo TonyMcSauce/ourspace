@@ -77,6 +77,7 @@ const App = (() => {
     { route: "chat", label: "Chat", icon: "chat" },
     { route: "notes", label: "Notes", icon: "notes" },
     { route: "memories", label: "Memories", icon: "memories" },
+    { route: "together", label: "Together", icon: "together" },
     { route: "us", label: "Us", icon: "us" },
   ];
 
@@ -300,23 +301,51 @@ const App = (() => {
   const VIEW_DEPENDS = {
     memories: ["memories", "notes", "journey"],
     notes: ["notes", "profile"],
+    together: ["jar", "capsules", "lists", "listItems", "profile"],
     us: ["messages", "notes", "memories", "journey", "favourites", "song", "countdown", "profile"],
   };
 
   function watchRemoteChanges() {
     let pending = false;
+    const isTypingInPage = () => {
+      const el = document.activeElement;
+      const root = document.getElementById("view-root");
+      // Only hold back while something has actually been typed.
+      return Boolean(el && root && root.contains(el) && el.matches("input, textarea") && el.value.trim() && Router.current() !== "chat");
+    };
+    // Put the cursor back in the same box after a live refresh.
+    const rememberFocus = () => {
+      const el = document.activeElement;
+      const list = el && el.closest && el.closest("[data-list]");
+      return list && el.matches("input") ? list.dataset.list : null;
+    };
+    const restoreFocus = (listId) => {
+      if (!listId) return;
+      setTimeout(() => {
+        const input = document.querySelector(`[data-list="${CSS.escape(listId)}"] .card-list__input`);
+        if (input) input.focus({ preventScroll: true });
+      }, 30);
+    };
     const refreshIfIdle = () => {
-      if (document.body.classList.contains("has-modal")) {
+      if (document.body.classList.contains("has-modal") || isTypingInPage()) {
         pending = true; // don't yank the page while someone is typing
         return;
       }
       pending = false;
+      const focusList = rememberFocus();
       Router.refresh({ quiet: true });
+      restoreFocus(focusList);
     };
     Storage.onChange((kind) => {
       if (!Auth.isAuthenticated()) return;
       const route = Router.current();
       if ((VIEW_DEPENDS[route] || []).includes(kind)) refreshIfIdle();
+    });
+    // Apply a deferred refresh once typing in the page has finished.
+    document.addEventListener("focusout", () => {
+      setTimeout(() => {
+        if (pending && !isTypingInPage() && !document.body.classList.contains("has-modal")) refreshIfIdle();
+      }, 0);
     });
     // Apply any deferred refresh once the modal closes.
     new MutationObserver(() => {
