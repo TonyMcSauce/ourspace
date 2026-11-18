@@ -10,6 +10,10 @@
  *   spaces/{spaceId}/notes/{id}
  *   spaces/{spaceId}/memories/{id}
  *   spaces/{spaceId}/journey/{id}
+ *   spaces/{spaceId}/jar/{id}           love jar slips
+ *   spaces/{spaceId}/capsules/{id}      time capsules
+ *   spaces/{spaceId}/lists/{id}         shared lists
+ *   spaces/{spaceId}/listItems/{id}     items on those lists
  *   spaces/{spaceId}/meta/favourites
  *   spaces/{spaceId}/meta/song
  *   spaces/{spaceId}/meta/countdown
@@ -20,7 +24,7 @@
 
 const Cloud = (() => {
   const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
-  const COLLECTIONS = ["messages", "notes", "memories", "journey"];
+  const COLLECTIONS = ["messages", "notes", "memories", "journey", "jar", "capsules", "lists", "listItems"];
   const DOCS = ["favourites", "song", "countdown", "profile", "wallpaper", "presence"];
   const HEARTBEAT_MS = 60 * 1000;
 

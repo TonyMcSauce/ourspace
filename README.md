@@ -22,6 +22,16 @@ so the experience can be built and refined before Firebase is wired in.
   or notes sealed until a date.
 - **Memories**: Polaroids with real photos, plus "On this day" when
   something happened on this date in an earlier year.
+- **Together**: three keepsake rituals built in 3D.
+  - *Love jar*: a glass jar of folded slips. Add reasons you love each other;
+    "Pick one" shakes the jar and a slip from the other person unfolds.
+    Unread slips come first.
+  - *Time capsules*: ribbon-wrapped boxes on a shelf, sealed with wax until
+    the day you choose. On the day, the lid swings open and the letter rises.
+  - *Shared lists*: index cards for a bucket list, date ideas, films and
+    more, with live updates, an inked strike-through and a burst of hearts.
+- **3D details**: Polaroids, letters and envelopes tilt toward your mouse or
+  finger with a soft sheen (off when reduced motion is on).
 - **Chat wallpaper**: eight designs (Paper, Letter, Linen, Hearts, Pressed
   flowers, Night sky, Watercolour, Postmarks) or your own photo with dim and
   blur. Each phone picks its own, or "Set for both of us".
@@ -66,6 +76,8 @@ Everything runs on Firebase's free Spark plan. Nothing here needs a card.
 │   ├── notes.js         # love notes feature module
 │   ├── memories.js      # memories gallery feature module
 │   ├── journey.js       # timeline + relationship counter
+│   ├── together.js      # love jar, time capsules, shared lists
+│   ├── tilt.js          # 3D tilt + sheen for paper objects
 │   ├── us.js            # couple profile page, pulls journey.js in
 │   └── app.js           # bootstraps the app, login screen, theme, toast
 ```
@@ -188,6 +200,10 @@ spaces/us/messages/{id}
 spaces/us/notes/{id}
 spaces/us/memories/{id}
 spaces/us/journey/{id}
+spaces/us/jar/{id}
+spaces/us/capsules/{id}
+spaces/us/lists/{id}
+spaces/us/listItems/{id}
 spaces/us/meta/favourites
 spaces/us/meta/song
 spaces/us/meta/countdown

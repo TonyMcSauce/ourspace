@@ -37,6 +37,11 @@ const UI = (() => {
     play: '<path d="M8 5.5v13l10.5-6.5Z" fill="currentColor" stroke="none"/>',
     pause: '<rect x="7" y="5.5" width="3.6" height="13" rx="1" fill="currentColor" stroke="none"/><rect x="13.4" y="5.5" width="3.6" height="13" rx="1" fill="currentColor" stroke="none"/>',
     flip: '<path d="M4 9a8 8 0 0 1 14.5-3.5M20 4v4h-4M20 15a8 8 0 0 1-14.5 3.5M4 20v-4h4"/>',
+    together: '<path d="M12 3.5 13.9 8l4.6.4-3.5 3 1.1 4.6L12 13.5 7.9 16l1.1-4.6-3.5-3 4.6-.4Z"/><path d="M5 19.5h14"/>',
+    jar: '<path d="M8 3.5h8M7.5 3.5v2.2c0 .8-.6 1.3-1.3 1.8A4.5 4.5 0 0 0 4.5 11v7a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-7a4.5 4.5 0 0 0-1.7-3.5c-.7-.5-1.3-1-1.3-1.8V3.5"/><path d="M12 16.5s-3-1.8-3-4a1.6 1.6 0 0 1 3-.8 1.6 1.6 0 0 1 3 .8c0 2.2-3 4-3 4Z"/>',
+    capsule: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/>',
+    list: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="m3.5 6.5 1.2 1.2 2-2.2M3.5 12l1.2 1.2 2-2.2"/><circle cx="5" cy="17.5" r="1.2"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     reply: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     lockOpen: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
     calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
@@ -255,6 +260,25 @@ const UI = (() => {
     });
   }
 
+  /** A little burst of hearts from an element (ticks, heartbeats). */
+  function burstHearts(from, count = 7) {
+    if (!from || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const rect = from.getBoundingClientRect();
+    for (let i = 0; i < count; i++) {
+      const h = document.createElement("span");
+      h.className = "heart-burst";
+      h.innerHTML = icon("us");
+      h.style.left = `${rect.left + rect.width / 2}px`;
+      h.style.top = `${rect.top + rect.height / 2}px`;
+      h.style.setProperty("--dx", `${(Math.random() - 0.5) * 140}px`);
+      h.style.setProperty("--dy", `${-50 - Math.random() * 100}px`);
+      h.style.setProperty("--r", `${(Math.random() - 0.5) * 60}deg`);
+      h.style.animationDelay = `${i * 40}ms`;
+      document.body.appendChild(h);
+      setTimeout(() => h.remove(), 1400);
+    }
+  }
+
   function uid(prefix) {
     return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   }
@@ -274,6 +298,7 @@ const UI = (() => {
     dayLabel,
     startOfDay,
     readImage,
+    burstHearts,
     uid,
     DAY,
   };

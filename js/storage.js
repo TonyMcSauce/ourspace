@@ -48,6 +48,10 @@ const Storage = (() => {
     notes: (a, b) => (b.date || 0) - (a.date || 0) || String(a.id).localeCompare(String(b.id)),
     memories: (a, b) => (b.addedAt || 0) - (a.addedAt || 0) || String(a.id).localeCompare(String(b.id)),
     journey: (a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)),
+    jar: (a, b) => (a.ts || 0) - (b.ts || 0) || String(a.id).localeCompare(String(b.id)),
+    capsules: (a, b) => String(a.openOn).localeCompare(String(b.openOn)) || String(a.id).localeCompare(String(b.id)),
+    lists: (a, b) => (a.ts || 0) - (b.ts || 0) || String(a.id).localeCompare(String(b.id)),
+    listItems: (a, b) => (a.ts || 0) - (b.ts || 0) || String(a.id).localeCompare(String(b.id)),
   };
 
   function normalise(kind, value) {
@@ -174,6 +178,33 @@ const Storage = (() => {
     },
     setCountdown(countdown) {
       return write("countdown", CONFIG.storageKeys.countdown, countdown);
+    },
+
+    // --- Together: love jar, time capsules, shared lists -------------
+    // These always start empty; nothing is ever seeded.
+    getJar() {
+      return read("jar", CONFIG.storageKeys.jar, []) || [];
+    },
+    setJar(slips) {
+      return write("jar", CONFIG.storageKeys.jar, slips);
+    },
+    getCapsules() {
+      return read("capsules", CONFIG.storageKeys.capsules, []) || [];
+    },
+    setCapsules(capsules) {
+      return write("capsules", CONFIG.storageKeys.capsules, capsules);
+    },
+    getLists() {
+      return read("lists", CONFIG.storageKeys.lists, []) || [];
+    },
+    setLists(lists) {
+      return write("lists", CONFIG.storageKeys.lists, lists);
+    },
+    getListItems() {
+      return read("listItems", CONFIG.storageKeys.listItems, []) || [];
+    },
+    setListItems(items) {
+      return write("listItems", CONFIG.storageKeys.listItems, items);
     },
 
     // --- Shared profile: when it all began --------------------------
