@@ -276,6 +276,59 @@ const Cloud = (() => {
     }
   }
 
+  /**
+   * Read receipts: only the status (and read time) of the other person's
+   * messages, written on their own so nothing else can hold them back.
+   */
+  const receipting = new Set();
+  function markMessages(ids, status) {
+    if (!db || !userId || !ids.length) return;
+    const col = space().collection("messages");
+    const fresh = ids.filter((id) => !receipting.has(`${id}:${status}`));
+    if (!fresh.length) return;
+    const now = Date.now();
+    for (let i = 0; i < fresh.length; i += BATCH_LIMIT) {
+      const batch = db.batch();
+      fresh.slice(i, i + BATCH_LIMIT).forEach((id) => {
+        receipting.add(`${id}:${status}`);
+        batch.update(col.doc(String(id)), status === "read" ? { status, readAt: now } : { status });
+      });
+      batch.commit().catch((err) => {
+        fresh.forEach((id) => receipting.delete(`${id}:${status}`));
+        console.info("Read receipt not saved", err);
+      });
+    }
+  }
+
+  /**
+   * Call relay (TURN) details from the notifier, so calls connect even
+   * when both networks block direct connections. Cached for a few hours;
+   * an empty list just means direct connections only.
+   */
+  let iceCache = { servers: null, until: 0 };
+  async function iceServers() {
+    if (iceCache.servers && Date.now() < iceCache.until) return iceCache.servers;
+    if (!push.workerUrl || !auth || !auth.currentUser) return [];
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      const res = await fetch(`${push.workerUrl}/ice`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}` },
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const data = res.ok ? await res.json() : {};
+      const servers = Array.isArray(data.iceServers) ? data.iceServers : [];
+      iceCache = { servers, until: Date.now() + (servers.length ? 4 * 3600 * 1000 : 10 * 60 * 1000) };
+      return servers;
+    } catch (err) {
+      console.info("No call relay", err);
+      return [];
+    }
+  }
+
   function pushSupport() {
     if (!pushReady()) return "unconfigured";
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
@@ -425,6 +478,8 @@ const Cloud = (() => {
     getMedia,
     deleteMedia,
     notify,
+    iceServers,
+    markMessages,
     // For calls: the shared space and Firestore helpers.
     space: () => space(),
     db: () => db,

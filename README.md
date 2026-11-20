@@ -273,6 +273,20 @@ Cloud Messaging. It's deployed as `ourspace-notify` on
 - iPhone: notifications need the app on the Home Screen (iOS 16.4+), then
   Settings > Notifications in the app.
 
+### Call relay (optional)
+
+Calls try to connect your phones directly. Some home and mobile networks
+block that, and the call sits on "Connecting…" before ending with
+"Couldn't connect". A relay (TURN) fixes it by passing the call through
+Cloudflare when a direct route isn't possible.
+
+The worker hands out short-lived relay details at `POST /ice` (only to your
+two accounts) once two settings exist on `ourspace-notify`:
+`TURN_KEY_ID` and the secret `TURN_KEY_API_TOKEN`, from a TURN key created
+under Cloudflare > Realtime > TURN. Cloudflare's first 1,000 GB a month
+are free; a relayed video call uses roughly 1 GB an hour. Without these
+settings, calls simply stay direct-only.
+
 ## Security considerations
 
 - `firestore.rules` lets only your two accounts in, and each of you can
@@ -304,8 +318,6 @@ Cloud Messaging. It's deployed as `ourspace-notify` on
 ## Version 2 roadmap (not built yet)
 
 - Typing indicators
-- A relay server for calls on very strict networks (some mobile networks
-  block direct connections; Cloudflare offers one with a free allowance)
 - Shared playlist for "Our Song"
 - Deeper relationship stats and memory organisation
 

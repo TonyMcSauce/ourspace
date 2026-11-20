@@ -99,10 +99,12 @@ const Chat = (() => {
     const text =
       m.callState === "ended"
         ? `${kind === "video" ? "Video" : "Voice"} call \u00B7 ${Calls.fmt((Number(m.duration) || 0) * 1000)}`
+        : m.callState === "failed"
+        ? `${kind === "video" ? "Video" : "Voice"} call couldn't connect`
         : m.callState === "declined"
         ? mine ? `${UI.escape(nameOf(Auth.otherUser().id, me))} couldn't take your ${word}` : `You declined a ${word}`
         : mine ? `No answer to your ${word}` : `Missed ${word} from ${theirName}`;
-    const missed = m.callState !== "ended" && !mine;
+    const missed = m.callState === "missed" && !mine;
     return `
       ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
       <button type="button" class="call-line ${missed ? "call-line--missed" : ""}" data-msg-id="${UI.escape(m.id)}" data-callback="${kind}" aria-label="${text}. Call back.">
@@ -233,7 +235,7 @@ const Chat = (() => {
     const seenId = (() => {
       for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i];
-        if (m.from === me.id && m.kind !== "nudge") return m.status === "read" ? m.id : null;
+        if (m.from === me.id && m.kind !== "nudge" && m.kind !== "call") return m.status === "read" ? m.id : null;
       }
       return null;
     })();
@@ -590,6 +592,15 @@ const Chat = (() => {
     root.querySelectorAll("[data-call]").forEach((b) => b.addEventListener("click", () => Calls.start(b.dataset.call)));
 
     async function loadEarlier(btn) {
+      if (messagesEl._loadingEarlier) return;
+      messagesEl._loadingEarlier = true;
+      try {
+        await loadEarlierNow(btn);
+      } finally {
+        messagesEl._loadingEarlier = false;
+      }
+    }
+    async function loadEarlierNow(btn) {
       const limit = (Number(messagesEl.dataset.limit) || PAGE) + PAGE;
       messagesEl.dataset.limit = String(limit);
       messagesEl._keepPosition = true;
@@ -607,6 +618,23 @@ const Chat = (() => {
       messages = loadMessages();
       renderMessageList(messagesEl, messages, me, { stickToBottom: false });
     }
+
+    // Older messages load by themselves as you near the top.
+    let nearTopQueued = false;
+    messagesEl.addEventListener(
+      "scroll",
+      () => {
+        if (nearTopQueued) return;
+        nearTopQueued = true;
+        requestAnimationFrame(() => {
+          nearTopQueued = false;
+          if (messagesEl.scrollTop > 600) return;
+          const b = messagesEl.querySelector(":scope > [data-load-earlier]");
+          if (b && !b.disabled) loadEarlier(b);
+        });
+      },
+      { passive: true }
+    );
 
     messagesEl.addEventListener("click", (e) => {
       const callback = e.target.closest("[data-callback]");
@@ -1074,18 +1102,16 @@ const Chat = (() => {
     const me = Auth.currentUser();
     if (!me) return;
     const viewing = Router.current() === "chat" && document.visibilityState === "visible";
-    let changed = false;
-    const next = loadMessages().map((m) => {
-      if (m.from === me.id) return m;
-      const target = viewing ? "read" : m.status === "sent" ? "delivered" : m.status;
-      if (target === m.status || (m.status === "read" && target !== "read")) return m;
-      changed = true;
-      return target === "read" ? { ...m, status: target, readAt: Date.now() } : { ...m, status: target };
+    const read = [];
+    const delivered = [];
+    loadMessages().forEach((m) => {
+      if (m.from === me.id || m.status === "read") return;
+      if (viewing) read.push(m.id);
+      else if (m.status !== "delivered") delivered.push(m.id);
     });
-    if (changed) {
-      saveMessages(next);
-      if (typeof Activity !== "undefined") Activity.paint();
-    }
+    if (read.length) Cloud.markMessages(read, "read");
+    if (delivered.length) Cloud.markMessages(delivered, "delivered");
+    if ((read.length || delivered.length) && typeof Activity !== "undefined") Activity.paint();
   }
 
   Storage.onChange((kind) => {
