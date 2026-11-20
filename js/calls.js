@@ -116,6 +116,7 @@ const Calls = (() => {
       <div class="call-screen call-screen--${mode} ${isVideo ? "call-screen--video" : "call-screen--audio"}" role="dialog" aria-modal="true" aria-label="${label} with ${UI.escape(peer.displayName)}">
         <div class="call-screen__backdrop" ${backdrop ? `style="background-image:url('${UI.escape(backdrop)}')"` : ""}></div>
         <video class="call-screen__remote" autoplay playsinline muted></video>
+        <canvas class="call-screen__canvas" aria-hidden="true"></canvas>
         <audio class="call-screen__sound" autoplay></audio>
         <video class="call-screen__local" autoplay playsinline muted></video>
         <div class="call-screen__top">
@@ -294,6 +295,7 @@ const Calls = (() => {
       v.srcObject = stream;
       v.muted = true;
       v.play().catch(() => {});
+      paintVideo(v, screen.querySelector(".call-screen__canvas"));
     }
     if (a && (force || a.srcObject !== stream)) {
       a.srcObject = stream;
@@ -303,6 +305,46 @@ const Calls = (() => {
         if (b) b.hidden = false;
       });
     }
+  }
+
+  /**
+   * On Windows, some graphics drivers show a full-window call video as
+   * black even though every frame arrives. There, the picture is painted
+   * frame by frame onto a canvas instead, which always shows.
+   */
+  const PAINT_VIDEO = /Windows/i.test(navigator.userAgent);
+  function paintVideo(video, canvas) {
+    if (!PAINT_VIDEO || !canvas || canvas._painting) return;
+    canvas._painting = true;
+    canvas.classList.add("call-screen__canvas--on");
+    const g = canvas.getContext("2d", { alpha: false });
+    const draw = () => {
+      if (!canvas.isConnected) return;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (vw && vh) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        const cw = Math.round(canvas.clientWidth * dpr);
+        const ch = Math.round(canvas.clientHeight * dpr);
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
+        }
+        // Fill the screen like object-fit: cover.
+        const scale = Math.max(cw / vw, ch / vh);
+        const sw = cw / scale;
+        const sh = ch / scale;
+        try {
+          g.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, cw, ch);
+        } catch {}
+      }
+      if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(draw);
+      else requestAnimationFrame(draw);
+    };
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(draw);
+    else requestAnimationFrame(draw);
+    // Redraw on resize too (no new frame needed).
+    window.addEventListener("resize", () => canvas.isConnected && requestAnimationFrame(() => (canvas.width = 0)), { passive: true });
   }
 
   /**
