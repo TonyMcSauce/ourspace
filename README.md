@@ -16,7 +16,13 @@ so the experience can be built and refined before Firebase is wired in.
   (an in-app camera on laptops), voice notes up to two minutes with a
   waveform player and 1x/1.5x/2x speed, double tap to heart, swipe a message
   to reply to it, blue ticks with a "Seen" time, and "online / last seen".
-  New messages slide in smoothly without the chat redrawing.
+  New messages slide in smoothly without the chat redrawing. Edit a message
+  you sent (press and hold, Edit) within 15 minutes, up to 5 times; it
+  shows "Edited" for both of you. Half-typed messages are kept as drafts.
+- **Emoji keyboard**: modelled on the iPhone one, with every emoji in iOS
+  categories, Frequently Used, a Love set, search, and press and hold for
+  skin tones (remembered). On iPhone and Mac they're Apple's own emoji.
+  One to three emoji on their own show big, without a bubble.
 - **Voice and video calls**: tap the phone or camera in the chat header.
   Calls go straight between your two phones (WebRTC), ring with a soft
   chime, notify a locked phone, and leave a line in the chat ("Video call

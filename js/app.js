@@ -368,8 +368,24 @@ const App = (() => {
     if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
     // When a new version takes over, offer a one-tap refresh.
     const hadController = Boolean(navigator.serviceWorker.controller);
+    let updateReady = false;
+    const inCall = () => document.body.classList.contains("in-call") || (typeof Calls !== "undefined" && Calls.isBusy && Calls.isBusy());
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (hadController) showBanner("update", "A fresh version of Our Space is ready.", "Refresh", () => location.reload());
+      if (!hadController) return;
+      updateReady = true;
+      // Already in the background: just load the new version now.
+      if (document.visibilityState === "hidden" && !inCall()) return location.reload();
+      showBanner("update", "A fresh version of Our Space is ready.", "Refresh", () => location.reload());
+    });
+    // Home Screen apps can stay open for days. Look for a new version each
+    // time the app comes back, and apply a waiting one quietly while it's
+    // in the background (never during a call).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        if (updateReady && !inCall()) location.reload();
+        return;
+      }
+      navigator.serviceWorker.getRegistration().then((reg) => reg && reg.update()).catch(() => {});
     });
     // A tapped notification asks the open app to go to the right page.
     navigator.serviceWorker.addEventListener("message", (e) => {
