@@ -249,6 +249,39 @@ const Cloud = (() => {
       .catch(() => {});
   }
 
+  // ---------------------------------------------------------------
+  // Scheduled messages: waiting in spaces/{space}/scheduled until the
+  // notifier delivers them. Only the sender can see their own.
+  // ---------------------------------------------------------------
+  function watchScheduled(cb) {
+    if (!db || !userId) return () => {};
+    return space()
+      .collection("scheduled")
+      .where("from", "==", userId)
+      .onSnapshot(
+        (snap) => cb(snap.docs.map((d) => d.data()).sort((a, b) => a.sendAt - b.sendAt)),
+        (err) => console.info("Scheduled list", err)
+      );
+  }
+  function saveScheduled(item) {
+    if (!db || !userId) return Promise.reject(new Error("Not connected"));
+    return space().collection("scheduled").doc(item.id).set({ ...item, from: userId });
+  }
+  function cancelScheduled(id) {
+    if (!db || !userId) return Promise.resolve();
+    return space().collection("scheduled").doc(id).delete();
+  }
+
+  /** "typing…": a timestamp while typing, 0 when stopped (throttled by the chat). */
+  function setTyping(on) {
+    if (!db || !userId || document.visibilityState !== "visible") return;
+    space()
+      .collection("meta")
+      .doc("presence")
+      .set({ [userId]: { t: Date.now(), on: true, typing: on ? Date.now() : 0 } }, { merge: true })
+      .catch(() => {});
+  }
+
   function onVisibility() {
     beat(document.visibilityState === "visible");
   }
@@ -261,14 +294,14 @@ const Cloud = (() => {
   const pushReady = () => Boolean(enabled && push.workerUrl && push.vapidKey);
 
   /** Ask the notifier to tap the other phone. Fire and forget. */
-  async function notify(kind) {
+  async function notify(kind, extra = {}) {
     if (!pushReady() || !userId || !auth || !auth.currentUser) return;
     try {
       const idToken = await auth.currentUser.getIdToken();
       await fetch(`${push.workerUrl}/notify`, {
         method: "POST",
         headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ kind }),
+        body: JSON.stringify({ ...extra, kind }),
         keepalive: true,
       });
     } catch (err) {
@@ -478,6 +511,10 @@ const Cloud = (() => {
     getMedia,
     deleteMedia,
     notify,
+    setTyping,
+    watchScheduled,
+    saveScheduled,
+    cancelScheduled,
     iceServers,
     markMessages,
     // For calls: the shared space and Firestore helpers.

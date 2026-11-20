@@ -19,6 +19,16 @@ so the experience can be built and refined before Firebase is wired in.
   New messages slide in smoothly without the chat redrawing. Edit a message
   you sent (press and hold, Edit) within 15 minutes, up to 5 times; it
   shows "Edited" for both of you. Half-typed messages are kept as drafts.
+- **Chat comforts**: "typing…" with soft dots while the other person
+  writes; quick reactions (❤️ 😂 😮 😢 👍 🔥) on press and hold; a "New
+  messages" divider where you left off; tap their name for Search (also
+  Ctrl or Cmd+F), Photos (every shared photo by month, with Save) and
+  Wallpaper; send up to 10 photos at once.
+- **Check-ins**: one tap "Home safe 🏠", "Leaving work 🚗", "On my way 🏃",
+  "Good morning ☀️", "Goodnight 🌙" or "Miss you 🥺", with a notification.
+- **Send later**: schedule a message for a time you pick. It stays private
+  to you until the notifier delivers it (checked every minute), even with
+  both phones off. Change or cancel it from the bar above the composer.
 - **Emoji keyboard**: modelled on the iPhone one, with every emoji in iOS
   categories, Frequently Used, a Love set, search, and press and hold for
   skin tones (remembered). On iPhone and Mac they're Apple's own emoji.
@@ -242,6 +252,7 @@ spaces/us/listItems/{id}
 spaces/us/meta/favourites
 spaces/us/media/{id}       photos and voice notes, fetched only when needed
 spaces/us/calls/{id}       call set-up only (the call itself is phone to phone)
+spaces/us/scheduled/{id}   scheduled messages, visible only to the sender
 spaces/us/meta/avatars     profile photos (small)
 spaces/us/meta/push       notification devices (each person's own)
 spaces/us/meta/song
@@ -276,6 +287,9 @@ Cloud Messaging. It's deployed as `ourspace-notify` on
   lives only in Cloudflare's encrypted settings, never in this repo.
 - A daily run at 06:00 UTC (`TIMEZONE` setting) announces capsules and
   dated notes that open that day.
+- Every minute it delivers scheduled messages that are due: it writes the
+  message and removes the schedule in one step, so nothing is sent twice.
+- Check-in notifications only ever contain one of the fixed phrases.
 - iPhone: notifications need the app on the Home Screen (iOS 16.4+), then
   Settings > Notifications in the app.
 
