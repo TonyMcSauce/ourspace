@@ -17,7 +17,7 @@ const ThemeManager = (() => {
     const theme = resolve(pref);
     document.documentElement.setAttribute("data-theme", theme);
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#16120f" : "#f3ece0");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#141110" : "#fbf7f1");
   }
 
   function current() {

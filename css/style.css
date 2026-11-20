@@ -7,37 +7,39 @@
 :root {
   color-scheme: light;
 
-  --paper: #f3ece0;
-  --paper-deep: #ebe2d2;
-  --card: #fbf7f0;
-  --ink: #221a15;
-  --ink-soft: #5e5249;
-  --ink-faint: #8e8174;
-  --rule: #d9cdb9;
-  --rule-strong: #bfae95;
+  --paper: #fbf7f1;
+  --paper-deep: #f3ece2;
+  --card: #ffffff;
+  --ink: #2a211c;
+  --ink-soft: #5d5049;
+  --ink-faint: #9a8d82;
+  --rule: #eee5d9;
+  --rule-strong: #ddd0bf;
 
-  --wax: #c8382a;
-  --wax-deep: #9e2a1f;
-  --wax-tint: rgba(200, 56, 42, 0.09);
-  --on-wax: #fff8ef;
+  --wax: #d6453a;
+  --wax-deep: #b0352c;
+  --wax-tint: rgba(214, 69, 58, 0.08);
+  --on-wax: #ffffff;
 
   --blue: #2f4a6b;          /* second person's ink */
   --polaroid: #fffdf8;
   --tape: rgba(232, 214, 168, 0.72);
   --danger: #b3261e;
 
-  --shadow-paper: 0 1px 0 rgba(34, 26, 21, 0.04), 0 2px 6px rgba(34, 26, 21, 0.06);
-  --shadow-lift: 0 2px 4px rgba(34, 26, 21, 0.06), 0 14px 28px -8px rgba(34, 26, 21, 0.22);
+  --shadow-paper: 0 1px 2px rgba(60, 35, 20, 0.05), 0 4px 14px rgba(60, 35, 20, 0.05);
+  --shadow-lift: 0 2px 6px rgba(60, 35, 20, 0.06), 0 16px 32px -10px rgba(60, 35, 20, 0.2);
   --shadow-sheet: 0 -10px 40px rgba(34, 26, 21, 0.18);
 
-  --r-xs: 3px;
-  --r-sm: 6px;
-  --r-md: 10px;
+  --r-xs: 4px;
+  --r-sm: 10px;
+  --r-md: 16px;
   --r-full: 999px;
 
   --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-  --sans: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* San Francisco on iPhone and Mac; Inter (its closest open cousin) elsewhere. */
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  /* Small labels and times use the same font with even-width numbers. */
+  --mono: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --hand: "Homemade Apple", "Bradley Hand", cursive;   /* signatures */
   --marker: "Reenie Beanie", "Bradley Hand", cursive;   /* captions */
 
@@ -47,25 +49,29 @@
 
   --nav-height: 64px;
   --gutter: 1.25rem;
-  --grain-opacity: 0.32;
+  --grain-opacity: 0.12;
+  --glass: rgba(251, 247, 241, 0.84);
+  --hairline: rgba(90, 60, 40, 0.13);
+  --bubble-theirs: #ffffff;
+  --tick-read: #a9dcff;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --paper: #16120f;
-  --paper-deep: #1d1814;
-  --card: #211b16;
-  --ink: #efe6d6;
-  --ink-soft: #c2b5a3;
-  --ink-faint: #8d8070;
-  --rule: #352c25;
-  --rule-strong: #4c4036;
+  --paper: #141110;
+  --paper-deep: #1b1714;
+  --card: #221c18;
+  --ink: #f2ebe1;
+  --ink-soft: #c9bcad;
+  --ink-faint: #8f8275;
+  --rule: #2e2621;
+  --rule-strong: #443930;
 
-  --wax: #ef6a4f;
-  --wax-deep: #d1503a;
-  --wax-tint: rgba(239, 106, 79, 0.12);
-  --on-wax: #1d0d08;
+  --wax: #ec6a55;
+  --wax-deep: #d4503c;
+  --wax-tint: rgba(236, 106, 85, 0.12);
+  --on-wax: #ffffff;
 
   --blue: #8fb0d6;
   --polaroid: #ece4d6;
@@ -75,7 +81,11 @@
   --shadow-paper: 0 1px 0 rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.35), 0 18px 32px -10px rgba(0, 0, 0, 0.7);
   --shadow-sheet: 0 -10px 40px rgba(0, 0, 0, 0.5);
-  --grain-opacity: 0.18;
+  --grain-opacity: 0.08;
+  --glass: rgba(20, 17, 16, 0.8);
+  --hairline: rgba(255, 240, 225, 0.1);
+  --bubble-theirs: #2a231e;
+  --tick-read: #9fd5ff;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2370,6 +2380,18 @@ body.in-call { overflow: hidden; }
 .call-screen__status { font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.06em; color: rgba(255, 248, 239, 0.75); font-variant-numeric: tabular-nums; }
 .call-screen--video.call-screen--live .call-screen__who { transform: translateY(-4vh) scale(0.6); }
 .call-screen--video.call-screen--live .call-screen__face { display: none; }
+/* Like FaceTime: soft shade at the top and bottom so the name, timer and
+   buttons stay readable over any picture. */
+.call-screen--video.call-screen--live::before,
+.call-screen--video.call-screen--live::after {
+  content: ""; position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none;
+  animation: fade 600ms var(--ease);
+}
+.call-screen--video.call-screen--live::before { top: 0; height: 34%; background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.22) 55%, transparent); }
+.call-screen--video.call-screen--live::after { bottom: 0; height: 30%; background: linear-gradient(transparent, rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.6)); }
+.call-screen--video.call-screen--live .call-screen__name,
+.call-screen--video.call-screen--live .call-screen__status { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 18px rgba(0, 0, 0, 0.35); }
+.call-screen--video.call-screen--live .call-btn span { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
 .call-screen--ending .call-screen__status { color: #ffb3a3; }
 .call-screen__sound { display: none; }
 .call-screen--live .call-screen__status { cursor: pointer; }
@@ -2417,3 +2439,85 @@ body.in-call { overflow: hidden; }
 @media (min-width: 900px) {
   .call-screen__local { width: 180px; right: 1.5rem; top: 1.5rem; }
 }
+
+/* ==========================================================================
+   Refined look: warm ivory, Apple-style type, frosted bars, soft surfaces.
+   (Light and dark share these; colours come from the theme tokens.)
+   ========================================================================== */
+
+body { font-feature-settings: "cv11", "ss01"; }
+.msg__meta, .msg__seen, .chat-header__status, .call-screen__status, time { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+/* Thin hairlines instead of heavy ink rules */
+.page-header { border-bottom: 0.5px solid var(--hairline); }
+.counter { border-top: 0.5px solid var(--hairline); border-bottom: 0.5px solid var(--hairline); }
+.settings-row { border-bottom: 0.5px solid var(--hairline); }
+
+/* Frosted bars, like iOS */
+.chat-header {
+  background: var(--glass);
+  -webkit-backdrop-filter: saturate(1.5) blur(20px); backdrop-filter: saturate(1.5) blur(20px);
+  border-bottom: 0.5px solid var(--hairline);
+}
+.bottom-nav {
+  background: var(--glass);
+  -webkit-backdrop-filter: saturate(1.5) blur(20px); backdrop-filter: saturate(1.5) blur(20px);
+  border-top: 0.5px solid var(--hairline);
+}
+.nav-item--active { color: var(--wax); }
+.nav-item--active .nav-item__label { font-weight: 600; }
+
+/* Chat bubbles */
+.msg__bubble { border-radius: 20px; padding: 0.5rem 0.85rem 0.4rem; }
+.msg--mine.msg--group-start .msg__bubble { border-top-right-radius: 7px; }
+.msg--theirs.msg--group-start .msg__bubble { border-top-left-radius: 7px; }
+.msg--mine .msg__bubble {
+  background: linear-gradient(160deg, #e45a4c, #c8382a); color: #fff;
+  box-shadow: 0 2px 10px rgba(200, 56, 42, 0.18);
+}
+[data-theme="dark"] .msg--mine .msg__bubble { background: linear-gradient(160deg, #e45d4b, #b8382a); box-shadow: none; }
+.msg--theirs .msg__bubble { background: var(--bubble-theirs); border: 0; box-shadow: var(--shadow-paper); color: var(--ink); }
+[data-theme="dark"] .msg--theirs .msg__bubble { box-shadow: none; }
+.msg__meta { font-family: var(--sans); font-size: 0.68rem; opacity: 1; color: var(--ink-faint); }
+.msg--mine .msg__meta { color: rgba(255, 255, 255, 0.78); }
+.msg-status { opacity: 0.9; }
+.msg-status--read, .msg--mine .msg-status--read,
+[data-theme="dark"] .msg--mine .msg-status--read,
+:root:not([data-theme="dark"]) .chat-view--deep .msg--mine .msg-status--read { color: var(--tick-read); opacity: 1; font-weight: 700; }
+.msg__seen { font-family: var(--sans); font-size: 0.68rem; font-weight: 500; }
+.msg--editing .msg__bubble { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--wax), 0 10px 26px rgba(40, 20, 10, 0.18); }
+
+/* Day labels: small, quiet, rounded */
+.day-divider { margin: 1.2rem 0 0.5rem; }
+.day-divider::before, .day-divider::after { background: var(--hairline); }
+.day-divider span {
+  font-family: var(--sans); font-size: 0.72rem; font-weight: 600; letter-spacing: 0; text-transform: none;
+  color: var(--ink-faint);
+}
+
+/* Composer */
+.chat-input__field {
+  background: var(--card); border: 0.5px solid var(--rule-strong); border-radius: 22px;
+  box-shadow: 0 1px 2px rgba(60, 35, 20, 0.04);
+}
+.chat-input__field:focus { border-color: color-mix(in srgb, var(--wax) 55%, var(--rule-strong)); }
+.send-btn:not(.mic-btn) { background: linear-gradient(160deg, #e45a4c, #c8382a); color: #fff; box-shadow: 0 2px 8px rgba(200, 56, 42, 0.28); }
+.send-btn:not(.mic-btn):disabled { background: var(--rule); color: var(--ink-faint); box-shadow: none; }
+.reply-bar, .chat-composer .reply-bar { background: var(--glass); border-top: 0.5px solid var(--hairline); }
+.reply-bar__who { font-family: var(--sans); font-weight: 600; font-size: 0.74rem; }
+
+/* Buttons: warm red instead of heavy black */
+.btn { border-radius: 14px; }
+.btn--primary { background: linear-gradient(160deg, #e45a4c, #c8382a); color: #fff; box-shadow: 0 2px 10px rgba(200, 56, 42, 0.22); }
+.btn--primary:hover:not(:disabled) { background: linear-gradient(160deg, #d9503f, #b0352c); color: #fff; }
+
+/* Cards instead of dashed boxes */
+.empty-state--card, .polaroid--add, .countdown--empty, .chip--ghost {
+  border: 0.5px solid var(--rule-strong); border-style: solid; background: var(--card); box-shadow: var(--shadow-paper);
+}
+.countdown--empty:hover { border-color: color-mix(in srgb, var(--wax) 40%, var(--rule-strong)); }
+
+/* Popovers, sheets and menus pick up the softer surfaces */
+.popover { border: 0.5px solid var(--hairline); border-radius: 18px; }
+.countdown { border-radius: var(--r-md); border: 0.5px solid var(--rule-strong); }
+.countdown::before, .countdown::after { border-color: var(--rule-strong); }
