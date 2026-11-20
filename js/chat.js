@@ -11,13 +11,29 @@
 
 const Chat = (() => {
   const GROUP_GAP = 4 * 60 * 1000;
-  const EMOJI = [
-    "❤️", "🥰", "😘", "😍", "😊", "🥺", "😂", "🤣",
-    "😭", "😴", "😏", "🙄", "🤗", "😳", "😢", "😡",
-    "💕", "💖", "💋", "🌹", "🔥", "✨", "🌙", "☀️",
-    "👍", "🙏", "👏", "🤞", "🍜", "🍕", "☕", "🎉",
-  ];
+  // Editing follows Messages on iPhone: 15 minutes, up to 5 times.
+  const EDIT_WINDOW = 15 * 60 * 1000;
+  const MAX_EDITS = 5;
+  let editingId = null;
 
+  function canEdit(m, me) {
+    return Boolean(
+      m && me && m.from === me.id && !m.kind && !m.audio && (m.text || "").trim() &&
+      Date.now() - m.ts < EDIT_WINDOW && (Number(m.edits) || 0) < MAX_EDITS
+    );
+  }
+
+  // One to three emoji and nothing else shows big, without a bubble.
+  const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u200d|\ufe0f|\u20e3|[#*0-9]|\s)+$/u;
+  function jumboCount(m) {
+    const text = (m.text || "").trim();
+    if (!text || m.image || m.kind || m.replyTo || !EMOJI_ONLY.test(text) || /^[#*0-9\s]+$/.test(text)) return 0;
+    let n = 0;
+    if (window.Intl && Intl.Segmenter) {
+      for (const g of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text.replace(/\s+/g, ""))) n += g.segment ? 1 : 0;
+    } else n = Array.from(text.replace(/\s+/g, "").replace(/[\u200d\ufe0f]|\p{Emoji_Modifier}/gu, "")).length;
+    return n >= 1 && n <= 3 ? n : 0;
+  }
   function seedMessages() {
     const now = Date.now();
     const min = 60 * 1000;
@@ -122,10 +138,11 @@ const Chat = (() => {
     const isNewGroup = newDay || prev.kind === "nudge" || prev.from !== m.from || m.ts - prev.ts > GROUP_GAP;
     const hearts = Array.isArray(m.hearts) ? m.hearts : [];
     const hearted = hearts.length > 0;
+    const jumbo = jumboCount(m);
 
     return `
       ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
-      <div class="msg ${mine ? "msg--mine" : "msg--theirs"} ${isNewGroup ? "msg--group-start" : ""} ${hearted ? "msg--hearted" : ""}" data-msg-id="${UI.escape(m.id)}">
+      <div class="msg ${mine ? "msg--mine" : "msg--theirs"} ${isNewGroup ? "msg--group-start" : ""} ${hearted ? "msg--hearted" : ""} ${jumbo ? `msg--jumbo msg--jumbo-${jumbo}` : ""} ${m.id === editingId ? "msg--editing" : ""}" data-msg-id="${UI.escape(m.id)}">
         <span class="msg__swipe-icon" aria-hidden="true">${UI.icon("reply")}</span>
         <div class="msg__bubble ${m.image ? "msg__bubble--image" : ""} ${m.kind === "voice" ? "msg__bubble--voice" : ""}" tabindex="0" aria-label="${mine ? "You" : "Them"}: ${UI.escape(m.text || "Photo")}. Double tap to heart, swipe right to reply.">
           ${
@@ -139,7 +156,7 @@ const Chat = (() => {
           ${m.kind === "voice" ? Voice.playerHtml(m) : ""}
           ${m.image ? `<button type="button" class="msg__image" data-open-image data-image="${UI.escape(m.image)}"><img ${Media.attrs(m.image, "src")} alt="Shared photo" decoding="async" ${imageSize(m)} /></button>` : ""}
           ${m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
-          <span class="msg__meta">${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
+          <span class="msg__meta">${m.editedAt ? `<span class="msg__edited">Edited</span>` : ""}${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
           ${hearted ? `<span class="msg__heart" aria-label="Hearted">❤️</span>` : ""}
         </div>
         <button type="button" class="msg__reply-btn" data-reply aria-label="Reply">${UI.icon("reply")}</button>
@@ -319,9 +336,7 @@ const Chat = (() => {
         </button>
 
         <div class="chat-composer">
-          <div class="popover emoji-picker" id="emoji-picker" hidden>
-            ${EMOJI.map((e) => `<button type="button" class="emoji-picker__item" data-emoji="${e}" aria-label="Insert ${e}">${e}</button>`).join("")}
-          </div>
+          ${EmojiPicker.html()}
 
           <div class="popover attach-menu" id="attach-menu" hidden>
             <button type="button" class="attach-menu__item" data-attach="photos">${UI.icon("image")}<span>Photo</span></button>
@@ -337,6 +352,14 @@ const Chat = (() => {
             </span>
             <button type="button" class="icon-btn icon-btn--sm" id="reply-cancel" aria-label="Cancel reply">${UI.icon("close")}</button>
           </div>
+          <div class="reply-bar edit-bar" id="edit-bar" hidden>
+            <span class="reply-bar__icon" aria-hidden="true">${UI.icon("pencil")}</span>
+            <span class="reply-bar__body">
+              <span class="reply-bar__who">Editing message</span>
+              <span class="reply-bar__text"></span>
+            </span>
+            <button type="button" class="icon-btn icon-btn--sm" id="edit-cancel" aria-label="Cancel editing">${UI.icon("close")}</button>
+          </div>
           <form class="chat-input" id="chat-input-form" autocomplete="off">
             <button type="button" class="icon-btn" id="emoji-btn" aria-label="Emoji" aria-expanded="false" aria-controls="emoji-picker">${UI.icon("smile")}</button>
             <textarea
@@ -349,7 +372,7 @@ const Chat = (() => {
               aria-label="Message"
             ></textarea>
             <button type="button" class="icon-btn" id="attach-btn" aria-label="Attach" aria-expanded="false" aria-controls="attach-menu">${UI.icon("clip")}</button>
-            <button type="submit" class="send-btn" aria-label="Send message" hidden>${UI.icon("send")}</button>
+            <button type="submit" class="send-btn" aria-label="Send message" hidden>${UI.icon("send")}<span class="send-btn__check">${UI.icon("check")}</span></button>
             <button type="button" class="send-btn mic-btn" id="mic-btn" aria-label="Record a voice note">${UI.icon("mic")}</button>
           </form>
           <div class="recorder" id="recorder" hidden>
@@ -367,6 +390,8 @@ const Chat = (() => {
     `;
 
     const messagesEl = root.querySelector("#chat-messages");
+    const touchDevice = window.matchMedia("(hover: none)").matches;
+    let editing = null; // { id, draft } while changing a sent message
     const form = root.querySelector("#chat-input-form");
     const textarea = root.querySelector("#chat-textarea");
     const sendBtn = form.querySelector(".send-btn");
@@ -385,6 +410,14 @@ const Chat = (() => {
       textarea.style.height = "auto";
       textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
       const hasText = textarea.value.trim().length > 0;
+      if (editing) {
+        sendBtn.hidden = false;
+        sendBtn.disabled = !hasText;
+        micBtn.hidden = true;
+        sendBtn.setAttribute("aria-label", "Save changes");
+        return;
+      }
+      sendBtn.setAttribute("aria-label", "Send message");
       // Like WhatsApp: the mic becomes the send button once you type.
       sendBtn.hidden = !hasText && Voice.supported();
       sendBtn.disabled = !hasText;
@@ -399,6 +432,7 @@ const Chat = (() => {
     function closePopovers() {
       setPopover(attachMenu, attachBtn, false);
       setPopover(emojiPicker, emojiBtn, false);
+      EmojiPicker.reset(emojiPicker);
     }
 
     function progressStatus(id) {
@@ -424,6 +458,7 @@ const Chat = (() => {
     function startReply(id) {
       const target = loadMessages().find((m) => m.id === id);
       if (!target || target.kind === "nudge") return;
+      if (editing) cancelEdit();
       replyTo = { id: target.id, from: target.from, text: snippet(target) };
       replyBar.querySelector(".reply-bar__who").textContent = target.from === me.id ? "Replying to yourself" : `Replying to ${nameOf(target.from, me)}`;
       replyBar.querySelector(".reply-bar__text").textContent = replyTo.text;
@@ -438,6 +473,73 @@ const Chat = (() => {
       cancelReply();
       textarea.focus();
     });
+
+    // ---- Editing a sent message --------------------------------------
+    const editBar = root.querySelector("#edit-bar");
+    function startEdit(id) {
+      const m = loadMessages().find((x) => x.id === id);
+      if (!canEdit(m, me)) {
+        Toast.show("Messages can be edited for 15 minutes after sending.");
+        return;
+      }
+      cancelReply();
+      closePopovers();
+      editing = { id, draft: textarea.value };
+      editingId = id;
+      editBar.querySelector(".reply-bar__text").textContent = m.text;
+      editBar.hidden = false;
+      form.classList.add("chat-input--editing");
+      textarea.value = m.text;
+      syncComposer();
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      renderMessageList(messagesEl, (messages = loadMessages()), me, { stickToBottom: false });
+    }
+    function cancelEdit({ restore = true } = {}) {
+      if (!editing) return;
+      const draft = editing.draft;
+      editing = null;
+      editingId = null;
+      editBar.hidden = true;
+      form.classList.remove("chat-input--editing");
+      if (restore) textarea.value = draft;
+      syncComposer();
+      renderMessageList(messagesEl, (messages = loadMessages()), me, { stickToBottom: false });
+    }
+    function saveEdit(text) {
+      const all = loadMessages();
+      const m = all.find((x) => x.id === editing.id);
+      if (!m || text === (m.text || "").trim()) return cancelEdit();
+      if (!canEdit(m, me)) {
+        Toast.show("Messages can be edited for 15 minutes after sending.");
+        return cancelEdit();
+      }
+      const next = all.map((x) => (x.id === m.id ? { ...x, text, editedAt: Date.now(), edits: (Number(x.edits) || 0) + 1 } : x));
+      if (!saveMessages(next)) return Toast.show("Couldn't save that change.");
+      cancelEdit();
+    }
+    Router.onLeave(() => {
+      editing = null;
+      editingId = null;
+    });
+    root.querySelector("#edit-cancel").addEventListener("click", () => {
+      cancelEdit();
+      textarea.focus();
+    });
+
+    // ---- Drafts survive closing the app ---------------------------
+    const DRAFT_KEY = `ourspace_draft_${me.id}`;
+    function saveDraft() {
+      if (editing) return;
+      try {
+        textarea.value.trim() ? localStorage.setItem(DRAFT_KEY, textarea.value) : localStorage.removeItem(DRAFT_KEY);
+      } catch {}
+    }
+    try {
+      const draft = localStorage.getItem(DRAFT_KEY);
+      if (draft && !textarea.value) textarea.value = draft;
+    } catch {}
+    textarea.addEventListener("input", saveDraft);
 
     function send(partial) {
       const msg = { id: UI.uid("m"), from: me.id, text: "", ts: Date.now(), status: "sent", ...partial };
@@ -466,6 +568,11 @@ const Chat = (() => {
 
     textarea.addEventListener("input", syncComposer);
     textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && editing) {
+        e.preventDefault();
+        cancelEdit();
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         form.requestSubmit();
@@ -476,8 +583,14 @@ const Chat = (() => {
       e.preventDefault();
       const text = textarea.value.trim();
       if (!text) return;
+      if (editing) {
+        saveEdit(text);
+        textarea.focus();
+        return;
+      }
       if (send({ text })) {
         textarea.value = "";
+        saveDraft();
         syncComposer();
         closePopovers();
         textarea.focus();
@@ -496,20 +609,36 @@ const Chat = (() => {
       const open = emojiPicker.hidden;
       closePopovers();
       setPopover(emojiPicker, emojiBtn, open);
+      if (open) {
+        EmojiPicker.prepare(emojiPicker);
+        if (touchDevice && document.activeElement === textarea) textarea.blur();
+      }
     });
 
-    emojiPicker.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-emoji]");
-      if (!btn) return;
-      e.stopPropagation();
-      const emoji = btn.dataset.emoji;
-      const start = textarea.selectionStart ?? textarea.value.length;
-      const end = textarea.selectionEnd ?? textarea.value.length;
-      textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(end);
-      const caret = start + emoji.length;
-      textarea.focus();
-      textarea.setSelectionRange(caret, caret);
-      syncComposer();
+    // Emoji: insert where the cursor was. On phones the keyboard steps
+    // aside while the picker is open, like switching keyboards on iPhone.
+    let caret = null;
+    const rememberCaret = () => (caret = [textarea.selectionStart ?? textarea.value.length, textarea.selectionEnd ?? textarea.value.length]);
+    textarea.addEventListener("blur", rememberCaret);
+    EmojiPicker.attach(emojiPicker, {
+      onPick(emoji) {
+        const [start, end] = document.activeElement === textarea ? [textarea.selectionStart, textarea.selectionEnd] : caret || [textarea.value.length, textarea.value.length];
+        textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(end);
+        const at = start + emoji.length;
+        caret = [at, at];
+        if (!touchDevice) {
+          textarea.focus();
+          textarea.setSelectionRange(at, at);
+        }
+        syncComposer();
+        saveDraft();
+      },
+    });
+    emojiPicker.addEventListener("mousedown", (e) => {
+      if (e.target.closest("button")) e.preventDefault();
+    });
+    textarea.addEventListener("focus", () => {
+      if (touchDevice && !emojiPicker.hidden) closePopovers();
     });
 
     attachMenu.addEventListener("click", (e) => {
@@ -691,7 +820,6 @@ const Chat = (() => {
 
     // Feel like a native messenger: tap or drag the conversation to put
     // the keyboard away, and give the chat the whole screen while typing.
-    const touchDevice = window.matchMedia("(hover: none)").matches;
     textarea.addEventListener("focus", () => {
       if (touchDevice) document.body.classList.add("is-typing");
       requestAnimationFrame(() => (messagesEl.scrollTop = messagesEl.scrollHeight));
@@ -879,6 +1007,7 @@ const Chat = (() => {
           <div class="sheet-actions">
             ${action("reply", "reply", "Reply")}
             ${action("heart", "us", hearted ? "Remove heart" : "Heart it", hearted ? "" : "sheet-action--wax")}
+            ${canEdit(m, me) ? action("edit", "pencil", "Edit") : ""}
             ${text ? action("copy", "copy", "Copy text") : ""}
             ${mine ? action("delete", "trash", "Delete for both of us", "sheet-action--danger") : ""}
           </div>`,
@@ -890,6 +1019,7 @@ const Chat = (() => {
         UI.closeModal();
         if (what === "reply") setTimeout(() => startReply(id), 200);
         else if (what === "heart") toggleHeart(id);
+        else if (what === "edit") setTimeout(() => startEdit(id), 200);
         else if (what === "copy") {
           try {
             await navigator.clipboard.writeText(text);

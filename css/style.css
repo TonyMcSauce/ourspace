@@ -699,13 +699,76 @@ input[type="date"].field__input { appearance: none; -webkit-appearance: none; }
 }
 .popover[hidden] { display: none; }
 
-.emoji-picker { left: 0.6rem; width: min(330px, calc(100% - 1.2rem)); display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; }
-.emoji-picker__item {
-  aspect-ratio: 1; border-radius: var(--r-sm); font-size: 1.3rem;
-  display: flex; align-items: center; justify-content: center;
-  transition: background var(--fast) var(--ease), transform var(--fast) var(--ease);
+/* Emoji keyboard, in the spirit of the one on iPhone */
+.ep {
+  --ep-fill: color-mix(in srgb, var(--ink) 7%, transparent);
+  left: 0.6rem; width: min(372px, calc(100% - 1.2rem)); height: 352px;
+  display: flex; flex-direction: column; padding: 0; overflow: hidden;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6); backdrop-filter: blur(28px) saturate(1.6);
+  box-shadow: 0 18px 50px rgba(40, 20, 10, 0.22), 0 0 0 0.5px color-mix(in srgb, var(--ink) 14%, transparent);
+  border: 0;
+  animation: ep-in 240ms var(--ease);
 }
-.emoji-picker__item:hover { background: var(--paper-deep); transform: scale(1.12); }
+@keyframes ep-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+.ep__search {
+  display: flex; align-items: center; gap: 0.45rem; margin: 0.7rem 0.7rem 0.3rem;
+  height: 36px; padding: 0 0.7rem; border-radius: 11px; background: var(--ep-fill); color: var(--ink-faint);
+}
+.ep__search .ep__icon { width: 17px; height: 17px; flex: none; }
+.ep__query {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink);
+  font: inherit; font-size: 16px; /* 16px keeps iPhone from zooming in */
+}
+.ep__query::placeholder { color: var(--ink-faint); }
+.ep__query::-webkit-search-cancel-button { opacity: 0.5; }
+.ep__body { position: relative; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 0.45rem 0.4rem; scrollbar-width: thin; }
+.ep__title {
+  position: sticky; top: 0; z-index: 1; margin: 0; padding: 0.55rem 0.35rem 0.3rem;
+  font-family: var(--sans); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-faint);
+  background: linear-gradient(color-mix(in srgb, var(--card) 96%, transparent) 70%, transparent);
+}
+.ep__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); }
+.ep__e, .ep__tone {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 1;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 29px; line-height: 1; border-radius: 11px;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: transform 140ms var(--ease), background 140ms var(--ease);
+}
+@media (hover: hover) { .ep__e:hover, .ep__tone:hover { background: var(--ep-fill); } }
+.ep__e:active { transform: scale(0.84); }
+.ep__e--pop { animation: ep-pop 300ms var(--ease); }
+@keyframes ep-pop { 35% { transform: scale(1.32); } }
+.ep__e:focus-visible, .ep__tab:focus-visible, .ep__tone:focus-visible { outline: 2px solid var(--wax); outline-offset: -2px; }
+.ep--searching .ep__section[data-cat] { display: none; }
+.ep__empty { margin: 0; padding: 2.4rem 1rem; text-align: center; color: var(--ink-faint); font-size: 0.9rem; }
+.ep__loading { height: 100%; min-height: 200px; background: linear-gradient(100deg, transparent 30%, var(--ep-fill) 50%, transparent 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 14px; margin-top: 0.4rem; }
+.ep__tabs {
+  display: flex; gap: 2px; padding: 0.3rem 0.45rem 0.4rem;
+  border-top: 0.5px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.ep__tab {
+  flex: 1; height: 34px; display: flex; align-items: center; justify-content: center;
+  border-radius: 9px; color: var(--ink-faint);
+  transition: background 160ms var(--ease), color 160ms var(--ease);
+}
+.ep__tab .ep__icon { width: 19px; height: 19px; }
+.ep__tab.is-active { color: var(--ink); background: var(--ep-fill); }
+.ep__tones {
+  position: absolute; z-index: 6; display: flex; gap: 2px; padding: 5px;
+  border-radius: 16px; background: var(--card);
+  box-shadow: 0 12px 34px rgba(40, 20, 10, 0.28), 0 0 0 0.5px color-mix(in srgb, var(--ink) 16%, transparent);
+  animation: ep-in 180ms var(--ease);
+}
+.ep__tones[hidden] { display: none; }
+.ep__tone { width: 44px; font-size: 30px; }
+@media (max-width: 640px) {
+  .ep { left: 0.4rem; right: 0.4rem; width: auto; height: min(48vh, 340px); }
+  .ep__grid { grid-template-columns: repeat(8, 1fr); }
+}
 
 .attach-menu { right: 0.6rem; width: 220px; }
 .attach-menu__item {
@@ -1081,6 +1144,25 @@ body.is-locked { overflow: hidden; }
   animation: rise 200ms var(--ease);
 }
 .reply-bar[hidden] { display: none; }
+.edit-bar .reply-bar__who { text-transform: none; }
+.send-btn__check { display: none; }
+.chat-input--editing .send-btn > .icon { display: none; }
+.chat-input--editing .send-btn__check { display: contents; }
+.chat-input--editing #attach-btn { display: none; }
+
+/* Editing: the message being changed lifts gently. */
+.msg--editing .msg__bubble { box-shadow: 0 0 0 2px var(--wax), 0 10px 26px rgba(40, 20, 10, 0.18); transform: translateY(-1px); transition: box-shadow 200ms var(--ease), transform 200ms var(--ease); }
+.msg__edited { margin-right: 0.35em; font-family: var(--sans); font-style: italic; letter-spacing: 0; }
+
+/* One to three emoji on their own: big, no bubble (like Messages). */
+.msg--jumbo .msg__bubble { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 0.1rem !important; }
+.msg--jumbo .msg__text { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 3rem; line-height: 1.12; letter-spacing: 0.02em; }
+.msg--jumbo-2 .msg__text { font-size: 2.6rem; }
+.msg--jumbo-3 .msg__text { font-size: 2.25rem; }
+.msg--jumbo .msg__meta { color: var(--ink-soft); opacity: 0.75; }
+.chat-view--deep .msg--jumbo .msg__meta { color: #fff8ef; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+.msg-row--new .msg.msg--jumbo .msg__bubble { animation: jumbo-in 520ms var(--ease) both; }
+@keyframes jumbo-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } }
 .reply-bar__icon { color: var(--wax); }
 .reply-bar__icon .icon { width: 18px; height: 18px; }
 .reply-bar__body { flex: 1; min-width: 0; display: flex; flex-direction: column; border-left: 2px solid var(--wax); padding-left: 0.6rem; }
@@ -2247,6 +2329,9 @@ body.in-call { overflow: hidden; }
 .call-screen__remote {
   position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%;
   object-fit: cover; background: #000; opacity: 0;
+  /* Rounded corners keep Windows from handing a full-window video to the
+     graphics card's overlay path, which shows black on some drivers. */
+  border-radius: 2px;
   transition: opacity 600ms var(--ease);
 }
 .call-screen--video.call-screen--live .call-screen__remote { opacity: 1; }

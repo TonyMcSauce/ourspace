@@ -386,6 +386,24 @@ const Calls = (() => {
     }
     parts.push(audio && audio.bytesReceived ? "sound arriving" : "no sound arriving");
     if (route) parts.push(route);
+    // How bright the picture actually is: dark frames mean the camera is
+    // sending black; bright frames that look black mean a display problem.
+    if (active.call.kind === "video") {
+      const v = document.querySelector(".call-screen__remote");
+      if (v && v.videoWidth) {
+        try {
+          const c = document.createElement("canvas");
+          c.width = 32;
+          c.height = 24;
+          const g = c.getContext("2d", { willReadFrequently: true });
+          g.drawImage(v, 0, 0, 32, 24);
+          const px = g.getImageData(0, 0, 32, 24).data;
+          let sum = 0;
+          for (let i = 0; i < px.length; i += 4) sum += px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11;
+          parts.push(`picture ${Math.round((sum / (px.length / 4) / 255) * 100)}% bright`);
+        } catch {}
+      }
+    }
     let line = parts.join(" · ");
     if (out && active.call.kind === "video") {
       const sending = [
