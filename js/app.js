@@ -96,6 +96,11 @@ const App = (() => {
           <p class="login-card__kicker">${estLabel()}</p>
           <h1 class="login-card__brand">Our <em>Space</em></h1>
           <p class="login-card__tagline">${UI.escape(CONFIG.tagline)}</p>
+          ${
+            Object.values(CONFIG.users).some((u) => Avatars.photoOf(u.id))
+              ? `<div class="login-card__faces" aria-hidden="true">${Object.values(CONFIG.users).map((u) => Avatars.html(u, "avatar--lg")).join("")}</div>`
+              : ""
+          }
 
           <form id="login-form" class="login-form" novalidate>
             ${
@@ -120,7 +125,7 @@ const App = (() => {
                 .map(
                   (u, i) => `
                 <button type="button" class="person-chip" role="radio" aria-checked="false" data-user="${UI.escape(u.displayName)}">
-                  <span class="avatar avatar--sm ${i ? "avatar--alt" : ""}">${UI.escape(u.avatarInitial)}</span>
+                  ${Avatars.html(u, "avatar--sm")}
                   <span class="person-chip__name">${UI.escape(u.displayName)}</span>
                 </button>`
                 )
@@ -167,6 +172,7 @@ const App = (() => {
               ? `<span class="nav-item__num">0${i + 1}</span><span class="nav-item__text">${n.label}</span>`
               : `<span class="nav-item__icon">${UI.icon(n.icon)}</span><span class="nav-item__label">${n.label}</span>`
           }
+          ${n.route === "chat" ? `<span class="nav-badge" data-unread hidden></span>` : ""}
         </a>`
     ).join("");
   }
@@ -183,8 +189,8 @@ const App = (() => {
           <nav class="sidebar__nav">${navItemsHtml(true)}</nav>
           <div class="sidebar__footer">
             <span class="sidebar__avatars" aria-hidden="true">
-              <span class="avatar avatar--sm">${UI.escape(me.avatarInitial)}</span>
-              <span class="avatar avatar--sm avatar--alt">${UI.escape(other.avatarInitial)}</span>
+              ${Avatars.html(me, "avatar--sm")}
+              ${Avatars.html(other, "avatar--sm")}
             </span>
             <span class="sidebar__who">Signed in as <strong>${UI.escape(me.displayName)}</strong></span>
           </div>
@@ -279,11 +285,13 @@ const App = (() => {
       history.replaceState(null, "", "#/chat");
     }
     Router.init("#view-root");
+    setTimeout(updateUnread, 400);
     if (Lock.isEnabled()) Lock.unlock().then(() => Chat.checkIncomingNudges());
   }
 
   async function logout() {
     UI.closeModal();
+    Router.runCleanups();
     await Auth.logout();
     history.replaceState(null, "", window.location.pathname + window.location.search);
     renderShell();
@@ -302,7 +310,7 @@ const App = (() => {
     memories: ["memories", "notes", "journey"],
     notes: ["notes", "profile"],
     together: ["jar", "capsules", "lists", "listItems", "profile"],
-    us: ["messages", "notes", "memories", "journey", "favourites", "song", "countdown", "profile"],
+    us: ["messages", "notes", "memories", "journey", "favourites", "song", "countdown", "profile", "avatars"],
   };
 
   function watchRemoteChanges() {
@@ -355,10 +363,75 @@ const App = (() => {
 
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+    // When a new version takes over, offer a one-tap refresh.
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController) showBanner("update", "A fresh version of Our Space is ready.", "Refresh", () => location.reload());
+    });
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch((err) => console.info("Offline support unavailable.", err));
     });
   }
+
+  // ---------------------------------------------------------------
+  // Little banners: offline, update ready
+  // ---------------------------------------------------------------
+  function showBanner(kind, text, actionLabel, onAction) {
+    let el = document.querySelector(`.banner[data-kind="${kind}"]`);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "banner";
+      el.dataset.kind = kind;
+      el.setAttribute("role", "status");
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `<span class="banner__dot" aria-hidden="true"></span><span class="banner__text">${UI.escape(text)}</span>${
+      actionLabel ? `<button type="button" class="banner__action">${UI.escape(actionLabel)}</button>` : ""
+    }`;
+    if (actionLabel) el.querySelector(".banner__action").addEventListener("click", onAction);
+    requestAnimationFrame(() => el.classList.add("banner--visible"));
+    return el;
+  }
+  function hideBanner(kind, delay = 0) {
+    const el = document.querySelector(`.banner[data-kind="${kind}"]`);
+    if (!el) return;
+    setTimeout(() => {
+      el.classList.remove("banner--visible");
+      setTimeout(() => el.remove(), 400);
+    }, delay);
+  }
+  function watchConnection() {
+    const sync = () => {
+      if (navigator.onLine) {
+        if (document.querySelector('.banner[data-kind="offline"]')) {
+          showBanner("offline", "Back online \u00B7 all synced").classList.add("banner--good");
+          hideBanner("offline", 2200);
+        }
+      } else showBanner("offline", "You're offline \u00B7 we'll sync when you're back");
+    };
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    if (!navigator.onLine) sync();
+  }
+
+  // ---------------------------------------------------------------
+  // Unread badge on the Chat tab (and the Home Screen icon if allowed)
+  // ---------------------------------------------------------------
+  function updateUnread() {
+    if (!Cloud.isActive() || !Auth.isAuthenticated()) return;
+    const me = Auth.currentUser();
+    const count = (Storage.getMessages() || []).filter((m) => m.from !== me.id && m.status !== "read").length;
+    document.querySelectorAll("[data-unread]").forEach((b) => {
+      b.hidden = count === 0;
+      b.textContent = count > 99 ? "99+" : String(count);
+    });
+    try {
+      if (count && navigator.setAppBadge) navigator.setAppBadge(count);
+      else if (!count && navigator.clearAppBadge) navigator.clearAppBadge();
+    } catch {}
+  }
+  Storage.onChange((kind) => kind === "messages" && updateUnread());
+  window.addEventListener("hashchange", () => setTimeout(updateUnread, 300));
 
   // Keep the countdown and "last seen" fresh while the app sits open.
   setInterval(() => {
@@ -368,6 +441,7 @@ const App = (() => {
 
   async function init() {
     registerServiceWorker();
+    watchConnection();
     ThemeManager.init();
     if (!Cloud.enabled) {
       renderShell();

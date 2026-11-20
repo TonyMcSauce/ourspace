@@ -25,7 +25,10 @@
 const Cloud = (() => {
   const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
   const COLLECTIONS = ["messages", "notes", "memories", "journey", "jar", "capsules", "lists", "listItems"];
-  const DOCS = ["favourites", "song", "countdown", "profile", "wallpaper", "presence"];
+  const DOCS = ["favourites", "song", "countdown", "profile", "wallpaper", "avatars", "presence"];
+  // Only the most recent messages are kept live; older ones load on request.
+  const MESSAGE_WINDOW = 300;
+  const BATCH_LIMIT = 450; // Firestore allows 500 writes per batch
   const HEARTBEAT_MS = 60 * 1000;
 
   const cfg = CONFIG.firebase || {};
@@ -95,23 +98,20 @@ const Cloud = (() => {
         const col = space().collection(kind);
         const before = new Map((prev || []).map((item) => [item.id, JSON.stringify(item)]));
         const after = new Set();
-        const batch = db.batch();
-        let ops = 0;
+        const ops = [];
         (next || []).forEach((item) => {
           if (!item || !item.id) return;
           after.add(item.id);
-          if (before.get(item.id) !== JSON.stringify(item)) {
-            batch.set(col.doc(String(item.id)), clean(item));
-            ops++;
-          }
+          if (before.get(item.id) !== JSON.stringify(item)) ops.push((b) => b.set(col.doc(String(item.id)), clean(item)));
         });
         before.forEach((_, id) => {
-          if (!after.has(id)) {
-            batch.delete(col.doc(String(id)));
-            ops++;
-          }
+          if (!after.has(id)) ops.push((b) => b.delete(col.doc(String(id))));
         });
-        if (ops) batch.commit().catch(reportError);
+        for (let i = 0; i < ops.length; i += BATCH_LIMIT) {
+          const batch = db.batch();
+          ops.slice(i, i + BATCH_LIMIT).forEach((op) => op(batch));
+          batch.commit().catch(reportError);
+        }
         return;
       }
       if (DOCS.includes(kind)) {
@@ -153,11 +153,20 @@ const Cloud = (() => {
     COLLECTIONS.forEach((kind) => {
       firstLoads.push(
         new Promise((resolve) => {
-          const off = space()
-            .collection(kind)
+          const query =
+            kind === "messages"
+              ? space().collection(kind).orderBy("ts", "desc").limit(MESSAGE_WINDOW)
+              : space().collection(kind);
+          const off = query
             .onSnapshot(
               (snap) => {
-                Storage.receive(kind, snap.docs.map((d) => d.data()));
+                const docs = snap.docs.map((d) => d.data());
+                if (kind === "messages") {
+                  hasOlder = snap.size >= MESSAGE_WINDOW;
+                  // A full window is only the newest slice: keep older
+                  // messages already loaded on this phone.
+                  Storage.receive(kind, docs, hasOlder ? { keepOlderThan: Math.min(...docs.map((m) => m.ts || 0)) } : undefined);
+                } else Storage.receive(kind, docs);
                 resolve();
               },
               (err) => {
@@ -192,6 +201,42 @@ const Cloud = (() => {
     return Promise.all(firstLoads);
   }
 
+  // ---------------------------------------------------------------
+  // Older messages and the media store
+  // ---------------------------------------------------------------
+  let hasOlder = false;
+
+  async function loadOlderMessages(beforeTs, count = 150) {
+    if (!db || !userId) return 0;
+    const snap = await space().collection("messages").where("ts", "<", beforeTs).orderBy("ts", "desc").limit(count).get();
+    const docs = snap.docs.map((d) => d.data());
+    if (snap.size < count) hasOlder = false;
+    Storage.mergeMessages(docs);
+    return docs.length;
+  }
+
+  function putMedia(id, data) {
+    if (!db || !userId) return;
+    space().collection("media").doc(id).set({ data, by: userId, ts: Date.now() }).catch(reportError);
+  }
+
+  async function getMedia(id) {
+    if (!db) return "";
+    const ref = space().collection("media").doc(id);
+    // The offline cache first (free and instant), the server if needed.
+    try {
+      const cached = await ref.get({ source: "cache" });
+      if (cached.exists) return cached.data().data;
+    } catch {}
+    const doc = await ref.get();
+    return doc.exists ? doc.data().data : "";
+  }
+
+  function deleteMedia(id) {
+    if (!db || !userId) return;
+    space().collection("media").doc(id).delete().catch(() => {});
+  }
+
   function beat() {
     if (!db || !userId || document.visibilityState !== "visible") return;
     space()
@@ -215,6 +260,9 @@ const Cloud = (() => {
     await subscribeAll();
     beat();
     heartbeat = setInterval(beat, HEARTBEAT_MS);
+    setTimeout(() => {
+      if (userId && typeof Media !== "undefined") Media.migrate();
+    }, 4000);
     document.addEventListener("visibilitychange", onVisibility);
   }
 
@@ -258,5 +306,10 @@ const Cloud = (() => {
     signIn,
     signOut,
     isActive: () => enabled && !!userId,
+    hasOlderMessages: () => hasOlder,
+    loadOlderMessages,
+    putMedia,
+    getMedia,
+    deleteMedia,
   };
 })();

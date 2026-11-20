@@ -1,24 +1,137 @@
 rules_version = '2';
 
-// Only the two of you can read or write anything.
-// Replace the two emails below with the exact emails of your Firebase
-// Authentication accounts (the same ones you put in js/config.js),
-// then paste this whole file into Firebase console > Firestore > Rules
-// and press Publish.
+// Our Space security rules.
+//
+// Only the two of you can read or write anything, and each of you can
+// only write in your own name: you can't create a message, note,
+// reason or capsule as the other person, or edit what they wrote.
+// The other person's items can only have the little things you're
+// meant to change (read receipts, hearts, "opened", "read").
+//
+// Before publishing: replace TONY_EMAIL_HERE and BABEGIRL_EMAIL_HERE
+// with your two Firebase sign-in emails, in lowercase. Then paste this
+// whole file into Firebase console > Firestore > Rules and press Publish.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isUs() {
-      return request.auth != null
-        && request.auth.token.email.lower() in [
-          'TONY_EMAIL_HERE',
-          'BABEGIRL_EMAIL_HERE'
-        ];
+    function email() {
+      return request.auth != null && request.auth.token.email is string
+        ? request.auth.token.email.lower() : '';
+    }
+    function isUs() { return email() == 'TONY_EMAIL_HERE' || email() == 'BABEGIRL_EMAIL_HERE'; }
+    function me() { return email() == 'TONY_EMAIL_HERE' ? 'tony' : 'babegirl'; }
+
+    function data() { return request.resource.data; }
+    function changed() { return data().diff(resource.data).affectedKeys(); }
+    function onlyChanges(keys) { return changed().hasOnly(keys); }
+    function keeps(keys) { return !changed().hasAny(keys); }
+    function idMatches(id) { return data().id == id; }
+
+    // Your profile photo, if present, is a small image data URL.
+    function avatar() {
+      return !(me() in data()) || (data()[me()] is string && data()[me()].size() <= 200000
+        && data()[me()].matches('data:image/.*'));
     }
 
-    match /spaces/{spaceId}/{document=**} {
-      allow read, write: if isUs();
+    // Optional text field no longer than n characters.
+    function text(field, n) {
+      return !(field in data()) || data()[field] == null || (data()[field] is string && data()[field].size() <= n);
+    }
+    // Media is either a reference to the media store or a small inline data URL.
+    function media(field) {
+      return !(field in data()) || data()[field] == null
+        || (data()[field] is string && data()[field].size() <= 1000000
+            && (data()[field].matches('media:[A-Za-z0-9_-]{1,64}') || data()[field].matches('data:(image|audio)/.*')));
+    }
+
+    match /spaces/{spaceId} {
+
+      match /messages/{id} {
+        allow read: if isUs();
+        allow create: if isUs() && idMatches(id) && data().from == me()
+          && text('text', 5000) && media('image') && media('audio');
+        // Your own: edit anything but who sent it and when.
+        // Theirs: only mark delivered/read or add/remove a heart.
+        allow update: if isUs() && (
+          resource.data.from == me()
+            ? keeps(['id', 'from', 'ts']) && text('text', 5000)
+            : onlyChanges(['status', 'hearts'])
+        );
+        allow delete: if isUs() && resource.data.from == me();
+      }
+
+      match /notes/{id} {
+        allow read: if isUs();
+        allow create: if isUs() && idMatches(id) && data().author == me()
+          && text('title', 200) && text('message', 5000);
+        allow update: if isUs() && (
+          resource.data.author == me()
+            ? keeps(['id', 'author']) && text('title', 200) && text('message', 5000)
+            : onlyChanges(['locked', 'openedAt'])
+        );
+        allow delete: if isUs() && resource.data.author == me();
+      }
+
+      // A shared album and timeline: either of you can add, edit or remove.
+      match /memories/{id} {
+        allow read, delete: if isUs();
+        allow create, update: if isUs() && idMatches(id) && text('title', 200) && text('caption', 2000)
+          && media('image') && text('gradient', 200);
+      }
+      match /journey/{id} {
+        allow read, delete: if isUs();
+        allow create, update: if isUs() && idMatches(id) && text('label', 200) && text('icon', 16);
+      }
+
+      match /jar/{id} {
+        allow read: if isUs();
+        allow create: if isUs() && idMatches(id) && data().from == me() && text('text', 1000);
+        allow update: if isUs() && (
+          resource.data.from == me() ? keeps(['id', 'from']) && text('text', 1000) : onlyChanges(['readBy'])
+        );
+        allow delete: if isUs() && resource.data.from == me();
+      }
+
+      match /capsules/{id} {
+        allow read: if isUs();
+        allow create: if isUs() && idMatches(id) && data().from == me()
+          && text('title', 200) && text('message', 10000) && media('photo');
+        // Once sealed, nobody can change the letter or the date. Either of
+        // you can only record that you've opened it.
+        allow update: if isUs() && onlyChanges(['openedBy']);
+        allow delete: if isUs() && resource.data.from == me();
+      }
+
+      match /lists/{id} {
+        allow read, delete: if isUs();
+        allow create, update: if isUs() && idMatches(id) && text('title', 100) && text('emoji', 16);
+      }
+      match /listItems/{id} {
+        allow read, delete: if isUs();
+        allow create, update: if isUs() && idMatches(id) && text('text', 500);
+      }
+
+      // Photos and voice notes. Written once, never edited.
+      match /media/{id} {
+        allow read, delete: if isUs();
+        allow create: if isUs() && data().by == me() && data().data is string
+          && data().data.size() <= 1000000 && data().data.matches('data:(image|audio)/.*');
+        allow update: if false;
+      }
+
+      match /meta/{doc} {
+        allow read: if isUs();
+        // "Last seen": each of you may only update your own time.
+        // "Last seen" and profile photos: each of you may only change your own.
+        allow create: if isUs()
+          && (doc != 'presence' || data().keys().hasOnly([me()]))
+          && (doc != 'avatars' || (data().keys().hasOnly([me()]) && avatar()));
+        allow update: if isUs()
+          && (doc != 'presence' || onlyChanges([me()]))
+          && (doc != 'avatars' || (onlyChanges([me()]) && avatar()));
+        allow delete: if false;
+      }
     }
 
     // Everything else is closed.

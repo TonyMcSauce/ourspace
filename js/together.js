@@ -398,7 +398,7 @@ const Together = (() => {
         return;
       }
       const capsule = { id: UI.uid("cap"), from: me().id, title, message, openOn, ts: Date.now(), openedBy: [] };
-      if (photo) capsule.photo = photo;
+      if (photo) capsule.photo = Media.store(photo);
       Storage.setCapsules([...Storage.getCapsules(), capsule]);
       UI.closeModal();
       refresh();
@@ -408,16 +408,17 @@ const Together = (() => {
 
   function readCapsule(c) {
     const sealedOn = new Date(c.ts).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-    UI.openModal({
+    const panel = UI.openModal({
       variant: "modal__panel--note",
       label: c.title,
       content: `
         <p class="note-reader__eyebrow">Sealed ${sealedOn} · opened ${UI.formatLongDate(c.openOn)}</p>
         <h2 class="note-reader__title">${UI.escape(c.title)}</h2>
-        ${c.photo ? `<img class="capsule-photo" src="${UI.escape(c.photo)}" alt="Photo sealed in the capsule" />` : ""}
+        ${c.photo ? `<img class="capsule-photo" ${Media.attrs(c.photo, "src")} alt="Photo sealed in the capsule" />` : ""}
         <p class="note-reader__message">${UI.escape(c.message)}</p>
         <p class="note-reader__sign">${UI.escape(CONFIG.users[c.from]?.displayName || "")}</p>`,
     });
+    Media.hydrate(panel);
   }
 
   function openingScene(c, done) {
@@ -485,6 +486,7 @@ const Together = (() => {
             const ok = await UI.confirm({ title: "Delete this capsule?", message: "It hasn't been opened yet. This can't be undone.", confirmLabel: "Delete", danger: true });
             if (!ok) return;
             Storage.setCapsules(Storage.getCapsules().filter((x) => x.id !== c.id));
+            Media.remove(c.photo);
             refresh();
           });
       })

@@ -174,7 +174,7 @@ const Voice = (() => {
   function playerHtml(m) {
     const peaks = Array.isArray(m.peaks) && m.peaks.length ? m.peaks : new Array(BARS).fill(0.3);
     return `
-      <div class="voice" data-voice="${UI.escape(m.id)}" style="--progress:0">
+      <div class="voice" data-voice="${UI.escape(m.id)}" ${Media.attrs(m.audio, "audio")} style="--progress:0">
         <button type="button" class="voice__play" aria-label="Play voice note">${UI.icon("play")}${UI.icon("pause")}</button>
         <div class="voice__wave" role="slider" aria-label="Voice note position" aria-valuemin="0" aria-valuemax="${Math.round(m.duration || 0)}" aria-valuenow="0" tabindex="0">
           ${peaks.map((p, i) => `<span style="--h:${p};--i:${i / peaks.length}"></span>`).join("")}
@@ -237,16 +237,30 @@ const Voice = (() => {
     }
     const m = getMessage(id);
     if (!m || !m.audio) return;
-    if (currentEl) {
-      setPlaying(currentEl, false);
-      currentEl.style.setProperty("--progress", 0);
+    const start = (src) => {
+      if (!src) return Toast.show("Couldn't load that voice note. Check your connection.");
+      if (currentEl) {
+        setPlaying(currentEl, false);
+        currentEl.style.setProperty("--progress", 0);
+      }
+      currentId = id;
+      currentEl = el;
+      el.dataset.duration = m.duration || 0;
+      audio.src = src;
+      audio.playbackRate = speed;
+      audio.play().catch(() => Toast.show("This phone can't play that voice note format."));
+    };
+    // Usually already fetched when it scrolled into view, so playback
+    // starts straight from the tap (iPhones require that).
+    const ready = Media.peek(m.audio);
+    if (ready) start(ready);
+    else {
+      el.classList.add("voice--loading");
+      Media.load(m.audio).then((src) => {
+        el.classList.remove("voice--loading");
+        start(src);
+      });
     }
-    currentId = id;
-    currentEl = el;
-    el.dataset.duration = m.duration || 0;
-    audio.src = m.audio;
-    audio.playbackRate = speed;
-    audio.play().catch(() => Toast.show("This phone can't play that voice note format."));
   }
 
   function seek(container, id, ratio, getMessage) {

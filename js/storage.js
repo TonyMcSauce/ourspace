@@ -95,11 +95,24 @@ const Storage = (() => {
       return !!remote;
     },
     /** Called by cloud.js whenever Firestore reports new data. */
-    receive(kind, value) {
-      const next = normalise(kind, value);
+    receive(kind, value, { keepOlderThan } = {}) {
+      let incoming = value;
+      if (keepOlderThan && Array.isArray(value) && Array.isArray(cache[kind])) {
+        const fresh = new Set(value.map((m) => m.id));
+        incoming = cache[kind].filter((m) => (m.ts || 0) < keepOlderThan && !fresh.has(m.id)).concat(value);
+      }
+      const next = normalise(kind, incoming);
       const changed = !(kind in cache) || !same(cache[kind], next);
       cache[kind] = next;
       if (changed) emit(kind);
+    },
+    /** Add older messages fetched on request (shared mode). */
+    mergeMessages(list) {
+      if (!list || !list.length) return;
+      const byId = new Map((cache.messages || []).map((m) => [m.id, m]));
+      list.forEach((m) => byId.has(m.id) || byId.set(m.id, m));
+      cache.messages = normalise("messages", [...byId.values()]);
+      emit("messages");
     },
     clearCache() {
       Object.keys(cache).forEach((k) => delete cache[k]);
@@ -231,6 +244,24 @@ const Storage = (() => {
       }
       const cached = safeGet(CONFIG.storageKeys.startDateCache, null);
       return valid(cached) ? cached : CONFIG.relationshipStartDate.slice(0, 10);
+    },
+
+    // --- Profile pictures ----------------------------------------------
+    // { [userId]: small JPEG data URL }. Remembered on this phone too, so
+    // the sign-in screen can show them before anything has loaded.
+    getAvatars() {
+      const shared = read("avatars", CONFIG.storageKeys.avatars, null);
+      if (remote && shared) {
+        if (JSON.stringify(safeGet(CONFIG.storageKeys.avatarsCache, null)) !== JSON.stringify(shared)) {
+          safeSet(CONFIG.storageKeys.avatarsCache, shared);
+        }
+        return shared;
+      }
+      return shared || safeGet(CONFIG.storageKeys.avatarsCache, null) || {};
+    },
+    setAvatars(avatars) {
+      safeSet(CONFIG.storageKeys.avatarsCache, avatars);
+      return write("avatars", CONFIG.storageKeys.avatars, avatars);
     },
 
     // --- Chat wallpaper -----------------------------------------------

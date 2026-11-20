@@ -7,7 +7,7 @@
  * - Firebase data itself is not touched here; Firestore keeps its own
  *   offline copy.
  */
-const VERSION = "ourspace-v6";
+const VERSION = "ourspace-v8";
 const SHELL = [
   "./",
   "./index.html",
@@ -17,8 +17,10 @@ const SHELL = [
   "./js/config.js",
   "./js/storage.js",
   "./js/ui.js",
+  "./js/media.js",
   "./js/cloud.js",
   "./js/auth.js",
+  "./js/avatars.js",
   "./js/router.js",
   "./js/lock.js",
   "./js/countdown.js",

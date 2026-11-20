@@ -34,10 +34,11 @@ const Us = (() => {
     const messages = Chat.loadMessages().length;
     const notes = Notes.loadNotes().length;
     const memories = Memories.loadMemories().length;
-    const stat = (n, one, many, href) => `<a class="tally__item" href="${href}"><b>${n.toLocaleString()}</b> ${n === 1 ? one : many}</a>`;
+    const stat = (n, one, many, href, more = false) =>
+      `<a class="tally__item" href="${href}"><b>${n.toLocaleString()}${more ? "+" : ""}</b> ${n === 1 && !more ? one : many}</a>`;
     return `
       <p class="tally">
-        So far: ${stat(messages, "message", "messages", "#/chat")},
+        So far: ${stat(messages, "message", "messages", "#/chat", Cloud.hasOlderMessages())},
         ${stat(notes, "love note", "love notes", "#/notes")} and
         ${stat(memories, "memory", "memories", "#/memories")}.
       </p>
@@ -236,6 +237,19 @@ const Us = (() => {
     root.innerHTML = `
       <section class="us-view">
         <header class="us-header">
+          <div class="us-faces">
+            ${users
+              .map((u, i) => {
+                const mine = u.id === me.id;
+                const face = Avatars.html(u, "avatar--hero");
+                return `${i ? `<span class="seal us-faces__seal" aria-hidden="true"></span>` : ""}${
+                  mine
+                    ? `<button type="button" class="us-faces__me us-faces__me--${i ? "right" : "left"}" data-edit-avatar aria-label="Change your photo">${face}<span class="us-faces__edit">${UI.icon("camera")}</span></button>`
+                    : `<span class="us-faces__them">${face}</span>`
+                }`;
+              })
+              .join("")}
+          </div>
           <button type="button" class="us-header__kicker" id="edit-start" aria-label="Change the date you got together">
             <span>${UI.formatLongDate(Storage.getStartDate())} — today</span>
             ${UI.icon("edit")}
@@ -292,6 +306,14 @@ const Us = (() => {
                 <span class="toggle__thumb"></span>
               </button>
             </div>
+            <button type="button" class="settings-row settings-row--link" data-edit-avatar>
+              <span class="settings-row__icon">${UI.icon("camera")}</span>
+              <span class="settings-row__text">
+                <span class="settings-row__label">Profile photo</span>
+                <span class="settings-row__hint">${Avatars.photoOf(me.id) ? "Change or remove your photo" : `Add a photo for ${UI.escape(other.displayName)} to see`}</span>
+              </span>
+              <span class="settings-row__chevron">${UI.icon("chevronRight")}</span>
+            </button>
             <button type="button" class="settings-row settings-row--link" id="wallpaper-row">
               <span class="settings-row__icon">${UI.icon("wallpaper")}</span>
               <span class="settings-row__text">
@@ -318,7 +340,7 @@ const Us = (() => {
               </button>
             </div>
             <div class="settings-row">
-              <span class="settings-row__icon avatar avatar--sm ${me.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}">${UI.escape(me.avatarInitial)}</span>
+              <span class="settings-row__icon settings-row__icon--avatar">${Avatars.html(me, "avatar--sm")}</span>
               <div class="settings-row__text">
                 <p class="settings-row__label">Signed in as ${UI.escape(me.displayName)}</p>
                 <p class="settings-row__hint">Sharing this space with ${UI.escape(other.displayName)}</p>
@@ -349,6 +371,7 @@ const Us = (() => {
     };
     root.querySelector("#edit-countdown").addEventListener("click", () => Countdown.openEditor(refreshCountdown));
 
+    root.querySelectorAll("[data-edit-avatar]").forEach((b) => b.addEventListener("click", () => Avatars.openEditor()));
     root.querySelector("#edit-start").addEventListener("click", () =>
       openStartDateEditor(() => Router.refresh({ quiet: true }))
     );
