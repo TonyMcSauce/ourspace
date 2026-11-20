@@ -113,13 +113,15 @@ const Calls = (() => {
     return `
       <div class="call-screen call-screen--${mode} ${isVideo ? "call-screen--video" : "call-screen--audio"}" role="dialog" aria-modal="true" aria-label="${label} with ${UI.escape(peer.displayName)}">
         <div class="call-screen__backdrop" ${backdrop ? `style="background-image:url('${UI.escape(backdrop)}')"` : ""}></div>
-        <video class="call-screen__remote" autoplay playsinline></video>
+        <video class="call-screen__remote" autoplay playsinline muted></video>
+        <audio class="call-screen__sound" autoplay></audio>
         <video class="call-screen__local" autoplay playsinline muted></video>
         <div class="call-screen__top">
           <div class="call-screen__who">
             <span class="call-screen__face">${Avatars.html(peer, "avatar--hero")}<span class="call-screen__waves" aria-hidden="true"><i></i><i></i><i></i></span></span>
             <h2 class="call-screen__name">${UI.escape(peer.displayName)}</h2>
             <p class="call-screen__status" aria-live="polite">${mode === "incoming" ? `${label}…` : "Calling…"}</p>
+            <p class="call-screen__info" hidden></p>
           </div>
         </div>
         <button type="button" class="call-screen__unmute" hidden>Tap to hear ${UI.escape(peer.displayName)}</button>
@@ -169,7 +171,10 @@ const Calls = (() => {
     // The caller offers its tracks right away; the answering phone attaches
     // its own once it has read the offer (see sendOwnTracks), which is the
     // order Safari needs to actually send its camera.
-    if (role === "caller") stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    if (role === "caller") {
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      preferReliableVideo(pc);
+    }
     const remote = new MediaStream();
     pc.ontrack = (e) => {
       const add = (t) => {
@@ -272,17 +277,88 @@ const Calls = (() => {
     });
   }
 
+  /**
+   * The picture and the sound play separately: a silent picture is always
+   * allowed to play by itself, so the video never waits on permission
+   * for sound.
+   */
   function attachRemote(stream, force = false) {
-    const v = document.querySelector(".call-screen:not(.call-screen--leaving) .call-screen__remote");
-    if (!v) return;
-    if (v.srcObject === stream && !force) return;
-    if (v.srcObject === stream) v.srcObject = null; // make the player look again
-    v.srcObject = stream;
-    v.play().catch(() => {
-      // Some phones need one more tap before sound can play.
-      const b = document.querySelector(".call-screen__unmute");
-      if (b) b.hidden = false;
+    const screen = document.querySelector(".call-screen:not(.call-screen--leaving)");
+    if (!screen) return;
+    const v = screen.querySelector(".call-screen__remote");
+    const a = screen.querySelector(".call-screen__sound");
+    if (v && (force || v.srcObject !== stream)) {
+      if (v.srcObject === stream) v.srcObject = null; // make the player look again
+      v.srcObject = stream;
+      v.muted = true;
+      v.play().catch(() => {});
+    }
+    if (a && (force || a.srcObject !== stream)) {
+      a.srcObject = stream;
+      a.play().catch(() => {
+        // Some browsers need one more tap before sound can play.
+        const b = screen.querySelector(".call-screen__unmute");
+        if (b) b.hidden = false;
+      });
+    }
+  }
+
+  /**
+   * Prefer VP8 for video: every browser here decodes it reliably, while
+   * iPhone's default (H.264) shows black on some Windows laptops.
+   */
+  function preferReliableVideo(pc) {
+    try {
+      const caps = window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities("video");
+      if (!caps) return;
+      const rank = (c) => {
+        const t = c.mimeType.toLowerCase();
+        return t === "video/vp8" ? 0 : t === "video/vp9" ? 1 : t === "video/h264" ? 2 : 3;
+      };
+      const codecs = caps.codecs.slice().sort((x, y) => rank(x) - rank(y));
+      pc.getTransceivers().forEach((t) => {
+        const kind = (t.receiver && t.receiver.track && t.receiver.track.kind) || (t.sender && t.sender.track && t.sender.track.kind);
+        if (kind === "video" && t.setCodecPreferences) t.setCodecPreferences(codecs);
+      });
+    } catch (err) {
+      console.info("Codec preference not applied", err);
+    }
+  }
+
+  /** Tap the timer: what's actually arriving, for troubleshooting. */
+  async function describeConnection() {
+    if (!active || !active.pc) return "";
+    const stats = await active.pc.getStats();
+    const byId = new Map();
+    stats.forEach((r) => byId.set(r.id, r));
+    let video = null;
+    let audio = null;
+    let route = "";
+    stats.forEach((r) => {
+      if (r.type === "inbound-rtp" && (r.kind || r.mediaType) === "video") video = r;
+      if (r.type === "inbound-rtp" && (r.kind || r.mediaType) === "audio") audio = r;
+      if (r.type === "candidate-pair" && (r.nominated || r.selected) && r.state === "succeeded") {
+        const local = byId.get(r.localCandidateId);
+        const remote = byId.get(r.remoteCandidateId);
+        const relayed = (local && local.candidateType === "relay") || (remote && remote.candidateType === "relay");
+        route = relayed ? "through the relay" : "direct";
+      }
     });
+    const parts = [];
+    if (active.call.kind === "video") {
+      if (!video || !video.bytesReceived) parts.push("no video arriving");
+      else {
+        const codec = byId.get(video.codecId);
+        parts.push(
+          `video ${codec ? codec.mimeType.split("/")[1] : "?"}`,
+          video.frameWidth ? `${video.frameWidth}×${video.frameHeight}` : "no picture yet",
+          `${video.framesDecoded || 0} frames`
+        );
+      }
+    }
+    parts.push(audio && audio.bytesReceived ? "sound arriving" : "no sound arriving");
+    if (route) parts.push(route);
+    return parts.join(" · ");
   }
 
   function onConnected() {
@@ -441,6 +517,7 @@ const Calls = (() => {
     try {
       await a.pc.setRemoteDescription(call.offer);
       sendOwnTracks(a.pc, stream);
+      preferReliableVideo(a.pc);
       flushPending();
       const answer = await a.pc.createAnswer();
       await a.pc.setLocalDescription(answer);
@@ -474,6 +551,7 @@ const Calls = (() => {
     clearInterval(active.timer);
     clearTimeout(active.ringTimer);
     clearTimeout(active.connectTimer);
+    clearInterval(active.infoTimer);
     (active.offs || []).forEach((off) => off && off());
     if (active.stream) active.stream.getTracks().forEach((t) => t.stop());
     if (active.pc) {
@@ -519,9 +597,24 @@ const Calls = (() => {
   async function onControl(e) {
     const unmute = e.target.closest(".call-screen__unmute");
     if (unmute) {
+      const a = document.querySelector(".call-screen__sound");
       const v = document.querySelector(".call-screen__remote");
+      if (a) a.play().catch(() => {});
       if (v) v.play().catch(() => {});
       unmute.hidden = true;
+      return;
+    }
+    const status = e.target.closest(".call-screen__status, .call-screen__info");
+    if (status && active && active.connectedAt) {
+      const info = document.querySelector(".call-screen__info");
+      if (!info) return;
+      info.hidden = !info.hidden;
+      clearInterval(active.infoTimer);
+      if (!info.hidden) {
+        const paint = async () => (info.textContent = await describeConnection().catch(() => ""));
+        paint();
+        active.infoTimer = setInterval(paint, 2000);
+      }
       return;
     }
     const btn = e.target.closest("[data-act]");

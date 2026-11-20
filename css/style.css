@@ -2280,6 +2280,14 @@ body.in-call { overflow: hidden; }
 .call-screen--video.call-screen--live .call-screen__who { transform: translateY(-4vh) scale(0.6); }
 .call-screen--video.call-screen--live .call-screen__face { display: none; }
 .call-screen--ending .call-screen__status { color: #ffb3a3; }
+.call-screen__sound { display: none; }
+.call-screen--live .call-screen__status { cursor: pointer; }
+.call-screen__info {
+  max-width: 34ch; padding: 0.35rem 0.8rem; border-radius: var(--r-full);
+  background: rgba(0, 0, 0, 0.45); color: #fff8ef; font-size: 0.72rem; line-height: 1.4; text-align: center;
+}
+.call-screen__info[hidden] { display: none; }
+.call-screen--video.call-screen--live .call-screen__info { font-size: 1.15rem; }
 
 .call-screen__unmute {
   position: relative; z-index: 3; align-self: center;
