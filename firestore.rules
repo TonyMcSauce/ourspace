@@ -56,7 +56,7 @@ service cloud.firestore {
         allow update: if isUs() && (
           resource.data.from == me()
             ? keeps(['id', 'from', 'ts']) && text('text', 5000)
-            : onlyChanges(['status', 'hearts'])
+            : onlyChanges(['status', 'hearts', 'readAt'])
         );
         allow delete: if isUs() && resource.data.from == me();
       }
@@ -110,6 +110,25 @@ service cloud.firestore {
       match /listItems/{id} {
         allow read, delete: if isUs();
         allow create, update: if isUs() && idMatches(id) && text('text', 500);
+      }
+
+      // Calls: only set-up information lives here; the call itself goes
+      // straight between your phones. You can only call as yourself, and
+      // only the other person. Who, what kind and the offer never change.
+      match /calls/{id} {
+        allow read: if isUs();
+        allow create: if isUs() && idMatches(id) && data().from == me()
+          && data().to in ['tony', 'babegirl'] && data().to != me()
+          && data().kind in ['audio', 'video'] && data().state == 'ringing';
+        allow update: if isUs() && keeps(['id', 'from', 'to', 'kind', 'offer', 'ts'])
+          && data().state in ['ringing', 'accepted', 'declined', 'ended', 'missed', 'cancelled'];
+        allow delete: if false;
+
+        match /candidates/{cid} {
+          allow read: if isUs();
+          allow create: if isUs() && data().from == me();
+          allow update, delete: if false;
+        }
       }
 
       // Photos and voice notes. Written once, never edited.

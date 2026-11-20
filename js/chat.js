@@ -68,24 +68,53 @@ const Chat = (() => {
     if (!m) return "";
     if (m.kind === "nudge") return "Thinking of you";
     if (m.kind === "voice") return `Voice note \u00B7 ${Voice.fmt(m.duration)}`;
+    if (m.kind === "call") return m.callKind === "video" ? "Video call" : "Voice call";
     const text = (m.text || "").replace(/\s+/g, " ").trim();
     return text ? (text.length > 90 ? text.slice(0, 88) + "\u2026" : text) : m.image ? "Photo" : "";
   }
 
   function nudgeHtml(m, prev, me) {
     const newDay = !prev || UI.daysBetween(prev.ts, m.ts) !== 0;
-    const who = m.from === me.id ? "You sent a heartbeat" : `${UI.escape(nameOf(m.from, me))} is thinking of you`;
+    const level = Math.max(1, Math.min(3, Number(m.level) || 1));
+    const who = m.sync
+      ? "Your hearts were in sync"
+      : m.from === me.id
+      ? "You sent your heartbeat"
+      : `${UI.escape(nameOf(m.from, me))} is thinking of you`;
     return `
       ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
       <div class="nudge-line" data-msg-id="${UI.escape(m.id)}">
-        <span class="nudge-line__heart" aria-hidden="true">${UI.icon("us")}</span>
+        <span class="nudge-line__heart" aria-hidden="true">${UI.icon("us").repeat(level)}</span>
         <span>${who}</span>
         <span class="nudge-line__time">${formatTime(m.ts)}</span>
       </div>`;
   }
 
-  function messageHtml(m, prev, me) {
+  function callLineHtml(m, prev, me) {
+    const newDay = !prev || UI.daysBetween(prev.ts, m.ts) !== 0;
+    const mine = m.from === me.id;
+    const kind = m.callKind === "video" ? "video" : "audio";
+    const word = kind === "video" ? "video call" : "voice call";
+    const theirName = UI.escape(nameOf(m.from, me));
+    const text =
+      m.callState === "ended"
+        ? `${kind === "video" ? "Video" : "Voice"} call \u00B7 ${Calls.fmt((Number(m.duration) || 0) * 1000)}`
+        : m.callState === "declined"
+        ? mine ? `${UI.escape(nameOf(Auth.otherUser().id, me))} couldn't take your ${word}` : `You declined a ${word}`
+        : mine ? `No answer to your ${word}` : `Missed ${word} from ${theirName}`;
+    const missed = m.callState !== "ended" && !mine;
+    return `
+      ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
+      <button type="button" class="call-line ${missed ? "call-line--missed" : ""}" data-msg-id="${UI.escape(m.id)}" data-callback="${kind}" aria-label="${text}. Call back.">
+        <span class="call-line__icon" aria-hidden="true">${UI.icon(kind === "video" ? "video" : "phone")}</span>
+        <span>${text}</span>
+        <span class="call-line__time">${formatTime(m.ts)}</span>
+      </button>`;
+  }
+
+  function messageHtml(m, prev, me, seen = false) {
     if (m.kind === "nudge") return nudgeHtml(m, prev, me);
+    if (m.kind === "call") return callLineHtml(m, prev, me);
     const mine = m.from === me.id;
     const newDay = !prev || UI.daysBetween(prev.ts, m.ts) !== 0;
     const isNewGroup = newDay || prev.kind === "nudge" || prev.from !== m.from || m.ts - prev.ts > GROUP_GAP;
@@ -113,6 +142,7 @@ const Chat = (() => {
         </div>
         <button type="button" class="msg__reply-btn" data-reply aria-label="Reply">${UI.icon("reply")}</button>
       </div>
+      ${seen ? `<p class="msg__seen">Seen${m.readAt ? ` ${formatTime(m.readAt)}` : ""}</p>` : ""}
     `;
   }
 
@@ -123,6 +153,46 @@ const Chat = (() => {
   }
 
   const PAGE = 80;
+
+  // ---------------------------------------------------------------
+  // Drawing the conversation without redrawing it.
+  // Each message lives in a keyed row. On every update only new rows are
+  // added (and animate in); changed rows are patched in place, so photos,
+  // voice notes, focus and scroll position are never disturbed.
+  // ---------------------------------------------------------------
+  function keepNode(a, b) {
+    // Lazily filled photos and live voice players keep their own state.
+    if (a.hasAttribute("data-media-bound") && a.getAttribute("data-media") === b.getAttribute("data-media")) return true;
+    if (a.classList && a.classList.contains("voice") && a.dataset.voice === b.getAttribute("data-voice")) return true;
+    return false;
+  }
+
+  function syncAttributes(a, b) {
+    for (const { name, value } of Array.from(b.attributes)) {
+      if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+    }
+    for (const { name } of Array.from(a.attributes)) {
+      if (!b.hasAttribute(name)) a.removeAttribute(name);
+    }
+  }
+
+  function morph(a, b) {
+    const from = Array.from(a.childNodes);
+    const to = Array.from(b.childNodes);
+    to.forEach((nb, i) => {
+      const na = from[i];
+      if (!na) return a.appendChild(nb);
+      if (na.nodeType !== nb.nodeType || na.nodeName !== nb.nodeName) return a.replaceChild(nb, na);
+      if (na.nodeType === Node.TEXT_NODE) {
+        if (na.textContent !== nb.textContent) na.textContent = nb.textContent;
+        return;
+      }
+      if (na.nodeType !== Node.ELEMENT_NODE || keepNode(na, nb)) return;
+      syncAttributes(na, nb);
+      morph(na, nb);
+    });
+    for (let i = from.length - 1; i >= to.length; i--) from[i].remove();
+  }
 
   function renderMessageList(container, messages, me, { stickToBottom = true } = {}) {
     if (messages.length === 0) {
@@ -135,19 +205,68 @@ const Chat = (() => {
       `;
       return;
     }
-    // Only the latest messages are drawn; older ones on request. Keeps
-    // the chat quick however long your history grows.
+    // Only the latest messages are drawn; older ones on request.
     const limit = Number(container.dataset.limit) || PAGE;
     const start = Math.max(0, messages.length - limit);
     const more = start > 0 || Cloud.hasOlderMessages();
     const prevScroll = container.scrollTop;
     const fromBottom = container.scrollHeight - container.scrollTop;
-    container.innerHTML =
-      (more ? `<button type="button" class="load-earlier" data-load-earlier>Show earlier messages</button>` : "") +
-      messages
-        .slice(start)
-        .map((m, i) => messageHtml(m, messages[start + i - 1], me))
-        .join("");
+    const firstDraw = !container.querySelector(":scope > .msg-row");
+    if (firstDraw) container.innerHTML = "";
+
+    // "Show earlier" button, always first.
+    let earlier = container.querySelector(":scope > [data-load-earlier]");
+    if (more && !earlier) {
+      earlier = document.createElement("button");
+      earlier.type = "button";
+      earlier.className = "load-earlier";
+      earlier.setAttribute("data-load-earlier", "");
+      earlier.textContent = "Show earlier messages";
+      container.prepend(earlier);
+    } else if (!more && earlier) earlier.remove();
+    if (earlier) {
+      earlier.disabled = false;
+      earlier.textContent = "Show earlier messages";
+    }
+
+    // The latest of your messages they've read gets a small "Seen".
+    const seenId = (() => {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.from === me.id && m.kind !== "nudge") return m.status === "read" ? m.id : null;
+      }
+      return null;
+    })();
+
+    const existing = new Map(Array.from(container.querySelectorAll(":scope > .msg-row")).map((r) => [r.dataset.row, r]));
+    let cursor = earlier ? earlier.nextSibling : container.firstChild;
+    messages.slice(start).forEach((m, i) => {
+      const html = messageHtml(m, messages[start + i - 1], me, m.id === seenId);
+      let row = existing.get(m.id);
+      if (row) {
+        existing.delete(m.id);
+        if (row._html !== html) {
+          const tmp = document.createElement("div");
+          tmp.innerHTML = html;
+          morph(row, tmp);
+        }
+      } else {
+        row = document.createElement("div");
+        row.className = firstDraw ? "msg-row" : "msg-row msg-row--new";
+        row.dataset.row = m.id;
+        row.innerHTML = html;
+        if (!firstDraw) setTimeout(() => row.classList.remove("msg-row--new"), 600);
+      }
+      row._html = html;
+      if (row !== cursor) container.insertBefore(row, cursor);
+      cursor = row.nextSibling;
+    });
+    existing.forEach((row) => row.remove());
+    // Anything else (an old empty state) goes.
+    Array.from(container.children).forEach((el) => {
+      if (!el.classList.contains("msg-row") && !el.hasAttribute("data-load-earlier")) el.remove();
+    });
+
     if (container._keepPosition) {
       container.scrollTop = container.scrollHeight - fromBottom;
       container._keepPosition = false;
@@ -184,9 +303,11 @@ const Chat = (() => {
             <h1 class="chat-header__name">${UI.escape(other.displayName)}</h1>
             <p class="chat-header__status" id="chat-status">${UI.escape(statusFor(other))}</p>
           </div>
-          <button type="button" class="nudge-btn" id="nudge-btn" aria-label="Send ${UI.escape(other.displayName)} a heartbeat">
-            ${UI.icon("us")}<span>Thinking of you</span>
-          </button>
+          <div class="chat-header__calls">
+            <button type="button" class="icon-btn" data-call="audio" aria-label="Voice call ${UI.escape(other.displayName)}">${UI.icon("phone")}</button>
+            <button type="button" class="icon-btn" data-call="video" aria-label="Video call ${UI.escape(other.displayName)}">${UI.icon("video")}</button>
+          </div>
+          ${Heartbeat.buttonHtml(other)}
         </header>
         ${countdownStripHtml()}
 
@@ -286,7 +407,7 @@ const Chat = (() => {
         ["read", 2400],
       ].forEach(([status, delay]) => {
         setTimeout(() => {
-          const latest = loadMessages().map((m) => (m.id === id ? { ...m, status } : m));
+          const latest = loadMessages().map((m) => (m.id === id ? { ...m, status, ...(status === "read" ? { readAt: Date.now() } : {}) } : m));
           saveMessages(latest);
           if (document.contains(messagesEl)) {
             messages = latest;
@@ -333,14 +454,12 @@ const Chat = (() => {
     }
 
     // "Thinking of you" heartbeat
-    const nudgeBtn = root.querySelector("#nudge-btn");
-    nudgeBtn.addEventListener("click", () => {
-      if (nudgeBtn.disabled) return;
-      if (!send({ kind: "nudge" })) return;
-      burstHearts(nudgeBtn);
-      Toast.show(`A little heartbeat is on its way to ${other.displayName}`);
-      nudgeBtn.disabled = true;
-      setTimeout(() => (nudgeBtn.disabled = false), 8000);
+    Heartbeat.bind(root.querySelector("#nudge-btn"), (level) => {
+      const sync = Heartbeat.isSync(loadMessages(), me.id);
+      if (!send({ kind: "nudge", level, ...(sync ? { sync: true } : {}) })) return false;
+      if (sync) Heartbeat.show({ from: other, level, sync: true });
+      else Toast.show(`Your heartbeat is on its way to ${other.displayName}, ${Heartbeat.LEVEL_WORDS[level]}`);
+      return true;
     });
 
     textarea.addEventListener("input", syncComposer);
@@ -468,6 +587,8 @@ const Chat = (() => {
     }
 
     let lastTap = { id: null, time: 0 };
+    root.querySelectorAll("[data-call]").forEach((b) => b.addEventListener("click", () => Calls.start(b.dataset.call)));
+
     async function loadEarlier(btn) {
       const limit = (Number(messagesEl.dataset.limit) || PAGE) + PAGE;
       messagesEl.dataset.limit = String(limit);
@@ -488,6 +609,11 @@ const Chat = (() => {
     }
 
     messagesEl.addEventListener("click", (e) => {
+      const callback = e.target.closest("[data-callback]");
+      if (callback) {
+        Calls.start(callback.dataset.callback);
+        return;
+      }
       const earlier = e.target.closest("[data-load-earlier]");
       if (earlier) {
         loadEarlier(earlier);
@@ -574,7 +700,7 @@ const Chat = (() => {
     // Composer buttons must not steal focus from the text box, otherwise
     // the keyboard drops and the layout jumps mid-tap (send, emoji,
     // attach, cancel reply all keep the keyboard up, like Messages).
-    root.querySelectorAll(".chat-input button, #reply-cancel").forEach((btn) =>
+    root.querySelectorAll(".chat-input button, #reply-cancel, .popover button").forEach((btn) =>
       btn.addEventListener("mousedown", (e) => e.preventDefault())
     );
     const dismissKeyboard = () => {
@@ -888,43 +1014,7 @@ const Chat = (() => {
       </a>`;
   }
 
-  function burstHearts(from) {
-    const rect = from.getBoundingClientRect();
-    for (let i = 0; i < 7; i++) {
-      const h = document.createElement("span");
-      h.className = "heart-burst";
-      h.innerHTML = UI.icon("us");
-      h.style.left = `${rect.left + rect.width / 2}px`;
-      h.style.top = `${rect.top + rect.height / 2}px`;
-      h.style.setProperty("--dx", `${(Math.random() - 0.5) * 140}px`);
-      h.style.setProperty("--dy", `${-60 - Math.random() * 110}px`);
-      h.style.setProperty("--r", `${(Math.random() - 0.5) * 60}deg`);
-      h.style.animationDelay = `${i * 45}ms`;
-      document.body.appendChild(h);
-      setTimeout(() => h.remove(), 1400);
-    }
-  }
-
   const NUDGE_SEEN_KEY = "ourspace_nudge_seen";
-  function showHeartbeat(from) {
-    if (document.querySelector(".heartbeat")) return;
-    const el = document.createElement("div");
-    el.className = "heartbeat";
-    el.setAttribute("role", "alert");
-    el.innerHTML = `
-      <div class="heartbeat__face" aria-hidden="true">${Avatars.html(from, "avatar--xxl")}<span class="seal heartbeat__seal"></span></div>
-      <p class="heartbeat__text"><em>${UI.escape(from.displayName)}</em> is thinking of you</p>
-      <p class="heartbeat__hint">Tap anywhere</p>`;
-    const close = () => {
-      el.classList.add("heartbeat--leaving");
-      setTimeout(() => el.remove(), 400);
-    };
-    el.addEventListener("click", close);
-    document.body.appendChild(el);
-    if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
-    setTimeout(close, 5200);
-  }
-
   function checkIncomingNudges() {
     if (!Cloud.isActive() || document.body.classList.contains("is-locked")) return;
     const me = Auth.currentUser();
@@ -938,7 +1028,12 @@ const Chat = (() => {
     try {
       localStorage.setItem(NUDGE_SEEN_KEY, String(newest));
     } catch {}
-    if (fresh.length && document.visibilityState === "visible") showHeartbeat(CONFIG.users[fresh[fresh.length - 1].from]);
+    if (fresh.length && document.visibilityState === "visible") {
+      const m = fresh[fresh.length - 1];
+      // If I sent mine moments ago too, we reached out together.
+      const sync = m.sync || loadMessages().some((x) => x.kind === "nudge" && x.from === me.id && Math.abs(x.ts - m.ts) < 15 * 1000);
+      Heartbeat.show({ from: CONFIG.users[m.from], level: m.level, sync });
+    }
   }
 
   // ---------------------------------------------------------------
@@ -985,9 +1080,12 @@ const Chat = (() => {
       const target = viewing ? "read" : m.status === "sent" ? "delivered" : m.status;
       if (target === m.status || (m.status === "read" && target !== "read")) return m;
       changed = true;
-      return { ...m, status: target };
+      return target === "read" ? { ...m, status: target, readAt: Date.now() } : { ...m, status: target };
     });
-    if (changed) saveMessages(next);
+    if (changed) {
+      saveMessages(next);
+      if (typeof Activity !== "undefined") Activity.paint();
+    }
   }
 
   Storage.onChange((kind) => {

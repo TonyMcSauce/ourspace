@@ -425,6 +425,10 @@ const Cloud = (() => {
     getMedia,
     deleteMedia,
     notify,
+    // For calls: the shared space and Firestore helpers.
+    space: () => space(),
+    db: () => db,
+    me: () => userId,
     pushSupport,
     pushOn,
     enablePush,

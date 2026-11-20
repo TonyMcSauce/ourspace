@@ -15,9 +15,18 @@ so the experience can be built and refined before Firebase is wired in.
 - **Chat**: day separators, emoji picker, photos from the gallery or camera
   (an in-app camera on laptops), voice notes up to two minutes with a
   waveform player and 1x/1.5x/2x speed, double tap to heart, swipe a message
-  to reply to it, real read receipts, and "online / last seen".
-- **Thinking of you**: one tap sends a heartbeat that fills the other
-  person's screen when they have the app open.
+  to reply to it, blue ticks with a "Seen" time, and "online / last seen".
+  New messages slide in smoothly without the chat redrawing.
+- **Voice and video calls**: tap the phone or camera in the chat header.
+  Calls go straight between your two phones (WebRTC), ring with a soft
+  chime, notify a locked phone, and leave a line in the chat ("Video call
+  · 12:40", "Missed voice call"). Mute, camera off, flip camera and a
+  floating self view.
+- **Thinking of you**: press and hold the wax heart. A ring fills as it
+  charges: a tap sends "a little", a long hold sends "so, so much". The
+  other person sees a 3D heart beating at that strength with a soft
+  heartbeat sound and vibration. If you both reach out within a few
+  seconds, you both get a "hearts in sync" moment.
 - **Love Notes**: letters readable right away, sealed "open when…" notes,
   or notes sealed until a date.
 - **Memories**: Polaroids with real photos, plus "On this day" when
@@ -42,8 +51,12 @@ so the experience can be built and refined before Firebase is wired in.
 - **Profile photos**: set yours from Settings or the Us page with a
   circular cropper (drag and pinch to frame it). It shows everywhere: chat,
   sidebar, sign-in, Settings and side by side on the Us page.
-- **Little comforts**: unread badge on the Chat tab (and the Home Screen
-  icon where iOS allows), press and hold a message to reply, heart, copy or
+- **What's new, everywhere**: badges on Chat, Notes, Memories and Together
+  show what the other person added since you last looked (and the Home
+  Screen icon counts unread messages where iOS allows). A message that
+  arrives while you're on another tab appears as a little banner you can
+  tap.
+- **Little comforts**: press and hold a message to reply, heart, copy or
   delete it, a jump-to-latest button, offline and "new version ready"
   banners, and "Show earlier messages" for long histories.
 - **Notifications**: turn them on per phone in Settings. Messages, photos,
@@ -222,6 +235,7 @@ spaces/us/lists/{id}
 spaces/us/listItems/{id}
 spaces/us/meta/favourites
 spaces/us/media/{id}       photos and voice notes, fetched only when needed
+spaces/us/calls/{id}       call set-up only (the call itself is phone to phone)
 spaces/us/meta/avatars     profile photos (small)
 spaces/us/meta/push       notification devices (each person's own)
 spaces/us/meta/song
@@ -289,9 +303,9 @@ Cloud Messaging. It's deployed as `ourspace-notify` on
 
 ## Version 2 roadmap (not built yet)
 
-- Voice messages in chat
 - Typing indicators
-- Push notifications (for example when a sealed note opens)
+- A relay server for calls on very strict networks (some mobile networks
+  block direct connections; Cloudflare offers one with a free allowance)
 - Shared playlist for "Our Song"
 - Deeper relationship stats and memory organisation
 

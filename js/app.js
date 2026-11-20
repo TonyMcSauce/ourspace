@@ -172,7 +172,7 @@ const App = (() => {
               ? `<span class="nav-item__num">0${i + 1}</span><span class="nav-item__text">${n.label}</span>`
               : `<span class="nav-item__icon">${UI.icon(n.icon)}</span><span class="nav-item__label">${n.label}</span>`
           }
-          ${n.route === "chat" ? `<span class="nav-badge" data-unread hidden></span>` : ""}
+          ${n.route !== "us" ? `<span class="nav-badge" data-badge="${n.route}" hidden></span>` : ""}
         </a>`
     ).join("");
   }
@@ -285,13 +285,16 @@ const App = (() => {
       history.replaceState(null, "", "#/chat");
     }
     Router.init("#view-root");
-    setTimeout(updateUnread, 400);
+    Activity.start();
+    if (Cloud.isActive()) Calls.startWatching();
+    setTimeout(Activity.paint, 400);
     if (Lock.isEnabled()) Lock.unlock().then(() => Chat.checkIncomingNudges());
   }
 
   async function logout() {
     UI.closeModal();
     Router.runCleanups();
+    Calls.stopWatching();
     await Auth.logout();
     history.replaceState(null, "", window.location.pathname + window.location.search);
     renderShell();
@@ -421,25 +424,6 @@ const App = (() => {
     window.addEventListener("offline", sync);
     if (!navigator.onLine) sync();
   }
-
-  // ---------------------------------------------------------------
-  // Unread badge on the Chat tab (and the Home Screen icon if allowed)
-  // ---------------------------------------------------------------
-  function updateUnread() {
-    if (!Cloud.isActive() || !Auth.isAuthenticated()) return;
-    const me = Auth.currentUser();
-    const count = (Storage.getMessages() || []).filter((m) => m.from !== me.id && m.status !== "read").length;
-    document.querySelectorAll("[data-unread]").forEach((b) => {
-      b.hidden = count === 0;
-      b.textContent = count > 99 ? "99+" : String(count);
-    });
-    try {
-      if (count && navigator.setAppBadge) navigator.setAppBadge(count);
-      else if (!count && navigator.clearAppBadge) navigator.clearAppBadge();
-    } catch {}
-  }
-  Storage.onChange((kind) => kind === "messages" && updateUnread());
-  window.addEventListener("hashchange", () => setTimeout(updateUnread, 300));
 
   // Keep the countdown and "last seen" fresh while the app sits open.
   setInterval(() => {
