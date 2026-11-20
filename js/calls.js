@@ -177,6 +177,7 @@ const Calls = (() => {
     if (role === "caller") {
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       preferReliableVideo(pc);
+      preferResilientAudio(pc);
     }
     const remote = new MediaStream();
     pc.ontrack = (e) => {
@@ -313,17 +314,20 @@ const Calls = (() => {
    * frame by frame onto a canvas instead, which always shows.
    */
   const PAINT_VIDEO = /Windows/i.test(navigator.userAgent);
+  const BUILD = "20"; // shown in the call readout; matches sw.js
   function paintVideo(video, canvas) {
     if (!PAINT_VIDEO || !canvas || canvas._painting) return;
     canvas._painting = true;
     canvas.classList.add("call-screen__canvas--on");
-    const g = canvas.getContext("2d", { alpha: false });
+    // willReadFrequently keeps this canvas on the processor, away from the
+    // graphics card path that shows black on these laptops.
+    const g = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
     const draw = () => {
       if (!canvas.isConnected) return;
       const vw = video.videoWidth;
       const vh = video.videoHeight;
       if (vw && vh) {
-        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        const dpr = 1;
         const cw = Math.round(canvas.clientWidth * dpr);
         const ch = Math.round(canvas.clientHeight * dpr);
         if (canvas.width !== cw || canvas.height !== ch) {
@@ -370,18 +374,50 @@ const Calls = (() => {
   }
 
   /**
+   * Clearer voice on lossy connections: prefer RED (each bit of sound is
+   * sent twice, so a lost packet doesn't become a gap). Falls back to
+   * plain Opus when the other phone doesn't offer it.
+   */
+  function preferResilientAudio(pc) {
+    try {
+      const caps = window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities("audio");
+      if (!caps) return;
+      const rank = (c) => {
+        const t = c.mimeType.toLowerCase();
+        return t === "audio/red" ? 0 : t === "audio/opus" ? 1 : 2;
+      };
+      const codecs = caps.codecs.slice().sort((x, y) => rank(x) - rank(y));
+      pc.getTransceivers().forEach((t) => {
+        const kind = (t.receiver && t.receiver.track && t.receiver.track.kind) || (t.sender && t.sender.track && t.sender.track.kind);
+        if (kind === "audio" && t.setCodecPreferences) t.setCodecPreferences(codecs);
+      });
+    } catch (err) {
+      console.info("Audio preference not applied", err);
+    }
+  }
+
+  /**
    * Keep video flowing on weaker connections: cap the data rate, keep the
    * motion smooth and let the picture soften first.
    */
   async function tuneSenders(pc) {
     for (const sender of pc.getSenders()) {
-      if (!sender.track || sender.track.kind !== "video" || !sender.getParameters) continue;
+      if (!sender.track || !sender.getParameters) continue;
       try {
         const params = sender.getParameters();
         if (!params.encodings || !params.encodings.length) params.encodings = [{}];
-        params.encodings[0].maxBitrate = 600000;
-        params.encodings[0].maxFramerate = 24;
-        params.degradationPreference = "maintain-framerate";
+        const e = params.encodings[0];
+        if (sender.track.kind === "audio") {
+          // The voice always goes first when the connection is tight.
+          e.priority = "high";
+          e.networkPriority = "high";
+        } else {
+          e.maxBitrate = 450000;
+          e.maxFramerate = 24;
+          e.priority = "low";
+          e.networkPriority = "low";
+          params.degradationPreference = "maintain-framerate";
+        }
         await sender.setParameters(params);
       } catch (err) {
         console.info("Video tuning not applied", err);
@@ -426,7 +462,16 @@ const Calls = (() => {
         if (lost > 0 && got + lost > 0) parts.push(`${Math.round((lost / (got + lost)) * 100)}% lost`);
       }
     }
-    parts.push(audio && audio.bytesReceived ? "sound arriving" : "no sound arriving");
+    if (audio && audio.bytesReceived) {
+      // Protected if both phones agreed on RED first for the voice.
+      const sdp = (active.pc.currentRemoteDescription && active.pc.currentRemoteDescription.sdp) || "";
+      const mline = sdp.split(/\r?\n/).find((l) => l.startsWith("m=audio"));
+      const firstPt = mline ? mline.split(" ")[3] : "";
+      const red = firstPt && new RegExp(`a=rtpmap:${firstPt} red/`, "i").test(sdp);
+      const alost = audio.packetsLost || 0;
+      const agot = audio.packetsReceived || 0;
+      parts.push(`sound ${red ? "protected" : "arriving"}${alost > 0 && agot ? ` (${Math.round((alost / (alost + agot)) * 100)}% lost)` : ""}`);
+    } else parts.push("no sound arriving");
     if (route) parts.push(route);
     // How bright the picture actually is: dark frames mean the camera is
     // sending black; bright frames that look black mean a display problem.
@@ -456,6 +501,8 @@ const Calls = (() => {
       ].filter(Boolean);
       line += `\n${sending.join(" · ")}`;
     }
+    const canvas = document.querySelector(".call-screen__canvas--on");
+    line += `\napp v${BUILD}${active.call.kind === "video" ? ` · picture drawn ${canvas ? "on canvas" : "by the video player"}` : ""}`;
     return line;
   }
 
@@ -617,6 +664,7 @@ const Calls = (() => {
       await a.pc.setRemoteDescription(call.offer);
       sendOwnTracks(a.pc, stream);
       preferReliableVideo(a.pc);
+      preferResilientAudio(a.pc);
       flushPending();
       const answer = await a.pc.createAnswer();
       await a.pc.setLocalDescription(answer);
