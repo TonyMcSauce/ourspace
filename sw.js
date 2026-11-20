@@ -7,7 +7,7 @@
  * - Firebase data itself is not touched here; Firestore keeps its own
  *   offline copy.
  */
-const VERSION = "ourspace-v22";
+const VERSION = "ourspace-v23";
 const SHELL = [
   "./",
   "./index.html",
@@ -49,7 +49,12 @@ const IMMUTABLE_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com", "www.gstat
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(VERSION).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
+    // "reload" skips the browser's short-term copy, so a new version never
+    // installs yesterday's stylesheet or scripts.
+    caches
+      .open(VERSION)
+      .then((cache) => cache.addAll(SHELL.map((url) => new Request(url, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -62,7 +67,9 @@ self.addEventListener("activate", (event) => {
 });
 
 function networkFirst(request) {
-  return fetch(request)
+  // Always check with the server (a quick "not modified" when unchanged),
+  // so a fix is live the moment the app updates.
+  return fetch(request, { cache: "no-cache" })
     .then((response) => {
       if (response && response.ok) {
         const copy = response.clone();
