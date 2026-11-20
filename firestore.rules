@@ -52,11 +52,12 @@ service cloud.firestore {
         allow create: if isUs() && idMatches(id) && data().from == me()
           && text('text', 5000) && media('image') && media('audio');
         // Your own: edit anything but who sent it and when.
-        // Theirs: only mark delivered/read or add/remove a heart.
+        // Theirs: only mark delivered/read, or react (one reaction each).
         allow update: if isUs() && (
           resource.data.from == me()
             ? keeps(['id', 'from', 'ts']) && text('text', 5000)
-            : onlyChanges(['status', 'hearts', 'readAt'])
+            : onlyChanges(['status', 'hearts', 'readAt', 'reactions'])
+              && (!('reactions' in data()) || data().reactions is map)
         );
         allow delete: if isUs() && resource.data.from == me();
       }
@@ -129,6 +130,19 @@ service cloud.firestore {
           allow create: if isUs() && data().from == me();
           allow update, delete: if false;
         }
+      }
+
+      // Scheduled messages: private to the sender until the notifier
+      // delivers them (it posts the message itself, then removes this).
+      match /scheduled/{id} {
+        allow read, delete: if isUs() && resource.data.from == me();
+        allow create: if isUs() && idMatches(id) && data().from == me()
+          && data().to in ['tony', 'babegirl'] && data().to != me()
+          && data().text is string && data().text.size() > 0 && data().text.size() <= 5000
+          && data().sendAt is int;
+        allow update: if isUs() && resource.data.from == me() && keeps(['id', 'from', 'to'])
+          && data().text is string && data().text.size() > 0 && data().text.size() <= 5000
+          && data().sendAt is int;
       }
 
       // Photos and voice notes. Written once, never edited.

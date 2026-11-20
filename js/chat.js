@@ -15,12 +15,30 @@ const Chat = (() => {
   const EDIT_WINDOW = 15 * 60 * 1000;
   const MAX_EDITS = 5;
   let editingId = null;
+  let unreadFromId = null; // "New messages" divider sits above this one
 
   function canEdit(m, me) {
     return Boolean(
       m && me && m.from === me.id && !m.kind && !m.audio && (m.text || "").trim() &&
       Date.now() - m.ts < EDIT_WINDOW && (Number(m.edits) || 0) < MAX_EDITS
     );
+  }
+
+  // Quick reactions, one per person (older messages used a hearts list).
+  const REACTIONS = ["❤️", "😂", "😮", "😢", "👍", "🔥"];
+  function reactionsOf(m) {
+    const out = [];
+    const map = m.reactions && typeof m.reactions === "object" ? m.reactions : {};
+    const hearts = Array.isArray(m.hearts) ? m.hearts : [];
+    Object.keys(CONFIG.users).forEach((uid) => {
+      const e = typeof map[uid] === "string" && map[uid].length <= 16 ? map[uid] : hearts.includes(uid) ? "❤️" : "";
+      if (e) out.push([uid, e]);
+    });
+    return out;
+  }
+  function myReaction(m, me) {
+    const r = reactionsOf(m).find(([uid]) => uid === me.id);
+    return r ? r[1] : "";
   }
 
   // One to three emoji and nothing else shows big, without a bubble.
@@ -136,13 +154,14 @@ const Chat = (() => {
     const mine = m.from === me.id;
     const newDay = !prev || UI.daysBetween(prev.ts, m.ts) !== 0;
     const isNewGroup = newDay || prev.kind === "nudge" || prev.from !== m.from || m.ts - prev.ts > GROUP_GAP;
-    const hearts = Array.isArray(m.hearts) ? m.hearts : [];
-    const hearted = hearts.length > 0;
+    const reacts = reactionsOf(m);
+    const hearted = reacts.length > 0;
     const jumbo = jumboCount(m);
 
     return `
       ${newDay ? `<div class="day-divider"><span>${UI.escape(UI.dayLabel(m.ts))}</span></div>` : ""}
-      <div class="msg ${mine ? "msg--mine" : "msg--theirs"} ${isNewGroup ? "msg--group-start" : ""} ${hearted ? "msg--hearted" : ""} ${jumbo ? `msg--jumbo msg--jumbo-${jumbo}` : ""} ${m.id === editingId ? "msg--editing" : ""}" data-msg-id="${UI.escape(m.id)}">
+      ${m.id === unreadFromId ? `<div class="unread-divider"><span>New messages</span></div>` : ""}
+      <div class="msg ${mine ? "msg--mine" : "msg--theirs"} ${m.kind === "checkin" ? "msg--checkin" : ""} ${isNewGroup ? "msg--group-start" : ""} ${hearted ? "msg--hearted" : ""} ${jumbo ? `msg--jumbo msg--jumbo-${jumbo}` : ""} ${m.id === editingId ? "msg--editing" : ""}" data-msg-id="${UI.escape(m.id)}">
         <span class="msg__swipe-icon" aria-hidden="true">${UI.icon("reply")}</span>
         <div class="msg__bubble ${m.image ? "msg__bubble--image" : ""} ${m.kind === "voice" ? "msg__bubble--voice" : ""}" tabindex="0" aria-label="${mine ? "You" : "Them"}: ${UI.escape(m.text || "Photo")}. Double tap to heart, swipe right to reply.">
           ${
@@ -155,9 +174,15 @@ const Chat = (() => {
           }
           ${m.kind === "voice" ? Voice.playerHtml(m) : ""}
           ${m.image ? `<button type="button" class="msg__image" data-open-image data-image="${UI.escape(m.image)}"><img ${Media.attrs(m.image, "src")} alt="Shared photo" decoding="async" ${imageSize(m)} /></button>` : ""}
-          ${m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
+          ${m.kind === "checkin" ? ChatExtras.checkinHtml(m) : m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
           <span class="msg__meta">${m.editedAt ? `<span class="msg__edited">Edited</span>` : ""}${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
-          ${hearted ? `<span class="msg__heart" aria-label="Hearted">❤️</span>` : ""}
+          ${
+            hearted
+              ? `<span class="msg__reacts" aria-label="Reactions: ${UI.escape(reacts.map(([uid, e]) => `${nameOf(uid, me)} ${e}`).join(", "))}">${reacts
+                  .map(([uid, e]) => `<span class="msg__react${uid === me.id ? " msg__react--mine" : ""}">${UI.escape(e)}</span>`)
+                  .join("")}</span>`
+              : ""
+          }
         </div>
         <button type="button" class="msg__reply-btn" data-reply aria-label="Reply">${UI.icon("reply")}</button>
       </div>
@@ -283,8 +308,10 @@ const Chat = (() => {
     existing.forEach((row) => row.remove());
     // Anything else (an old empty state) goes.
     Array.from(container.children).forEach((el) => {
-      if (!el.classList.contains("msg-row") && !el.hasAttribute("data-load-earlier")) el.remove();
+      if (!el.classList.contains("msg-row") && !el.hasAttribute("data-load-earlier") && !el.classList.contains("typing-row")) el.remove();
     });
+    const typingRow = container.querySelector(":scope > .typing-row");
+    if (typingRow && typingRow !== container.lastElementChild) container.appendChild(typingRow);
 
     if (container._keepPosition) {
       container.scrollTop = container.scrollHeight - fromBottom;
@@ -301,11 +328,7 @@ const Chat = (() => {
   }
 
   function openImage(src) {
-    UI.openModal({
-      variant: "modal__panel--photo",
-      label: "Photo",
-      content: `<img class="photo-viewer" src="${UI.escape(src)}" alt="Shared photo" />`,
-    });
+    ChatExtras.openPhoto(src);
   }
 
   function render(root) {
@@ -317,11 +340,13 @@ const Chat = (() => {
       <section class="chat-view" aria-label="Chat with ${UI.escape(other.displayName)}">
         <div class="chat-wallpaper" aria-hidden="true"></div>
         <header class="chat-header">
-          ${Avatars.html(other, "avatar--lg", '<span class="avatar__presence"></span>', 'aria-hidden="true"')}
-          <div class="chat-header__info">
-            <h1 class="chat-header__name">${UI.escape(other.displayName)}</h1>
-            <p class="chat-header__status" id="chat-status">${UI.escape(statusFor(other))}</p>
-          </div>
+          <button type="button" class="chat-header__who" id="chat-info-btn" aria-label="Chat info: search, photos and wallpaper">
+            ${Avatars.html(other, "avatar--lg", '<span class="avatar__presence"></span>', 'aria-hidden="true"')}
+            <span class="chat-header__info">
+              <span class="chat-header__name" role="heading" aria-level="1">${UI.escape(other.displayName)}</span>
+              <span class="chat-header__status" id="chat-status">${UI.escape(statusFor(other))}</span>
+            </span>
+          </button>
           <div class="chat-header__calls">
             <button type="button" class="icon-btn" data-call="audio" aria-label="Voice call ${UI.escape(other.displayName)}">${UI.icon("phone")}</button>
             <button type="button" class="icon-btn" data-call="video" aria-label="Video call ${UI.escape(other.displayName)}">${UI.icon("video")}</button>
@@ -341,9 +366,12 @@ const Chat = (() => {
           <div class="popover attach-menu" id="attach-menu" hidden>
             <button type="button" class="attach-menu__item" data-attach="photos">${UI.icon("image")}<span>Photo</span></button>
             <button type="button" class="attach-menu__item" data-attach="camera">${UI.icon("camera")}<span>Camera</span></button>
+            <button type="button" class="attach-menu__item" data-attach="checkin">${UI.icon("pin")}<span>Check in</span></button>
+            ${Cloud.isActive() ? `<button type="button" class="attach-menu__item" data-attach="later">${UI.icon("clock")}<span>Send later</span></button>` : ""}
             <button type="button" class="attach-menu__item" data-attach="wallpaper">${UI.icon("wallpaper")}<span>Wallpaper</span></button>
           </div>
 
+          <button type="button" class="scheduled-bar" id="scheduled-bar" hidden></button>
           <div class="reply-bar" id="reply-bar" hidden>
             <span class="reply-bar__icon" aria-hidden="true">${UI.icon("reply")}</span>
             <span class="reply-bar__body">
@@ -383,7 +411,7 @@ const Chat = (() => {
             <span class="recorder__meter" id="rec-meter" aria-hidden="true">${"<span></span>".repeat(28)}</span>
             <button type="button" class="send-btn" id="rec-send" aria-label="Send voice note">${UI.icon("send")}</button>
           </div>
-          <input type="file" accept="image/*" id="chat-photo-input" hidden />
+          <input type="file" accept="image/*" id="chat-photo-input" multiple hidden />
           <input type="file" accept="image/*" capture="environment" id="chat-camera-input" hidden />
         </div>
       </section>
@@ -403,7 +431,22 @@ const Chat = (() => {
     const cameraInput = root.querySelector("#chat-camera-input");
 
     Wallpaper.apply(root.querySelector(".chat-view"));
-    renderMessageList(messagesEl, messages, me);
+    // "New messages": open where you left off, with a divider above the first unread.
+    const firstUnread = Cloud.isActive() ? messages.find((m) => m.from !== me.id && m.status !== "read" && m.kind !== "call" && m.kind !== "nudge") : null;
+    unreadFromId = firstUnread ? firstUnread.id : null;
+    if (firstUnread) {
+      const need = messages.length - messages.indexOf(firstUnread) + 6;
+      if (need > PAGE) messagesEl.dataset.limit = String(need);
+    }
+    renderMessageList(messagesEl, messages, me, { stickToBottom: !unreadFromId });
+    if (unreadFromId) {
+      requestAnimationFrame(() => {
+        const divider = messagesEl.querySelector(".unread-divider");
+        if (divider) messagesEl.scrollTop += divider.getBoundingClientRect().top - messagesEl.getBoundingClientRect().top - 10;
+        else messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+    }
+    Router.onLeave(() => (unreadFromId = null));
 
     const micBtn = root.querySelector("#mic-btn");
     function syncComposer() {
@@ -541,7 +584,7 @@ const Chat = (() => {
     } catch {}
     textarea.addEventListener("input", saveDraft);
 
-    function send(partial) {
+    function send(partial, opts = {}) {
       const msg = { id: UI.uid("m"), from: me.id, text: "", ts: Date.now(), status: "sent", ...partial };
       if (replyTo && partial.kind !== "nudge") msg.replyTo = replyTo;
       const next = [...loadMessages(), msg];
@@ -553,9 +596,47 @@ const Chat = (() => {
       renderMessageList(messagesEl, messages, me);
       if (!Cloud.isActive()) progressStatus(msg.id);
       if (partial.kind !== "nudge") cancelReply();
-      Cloud.notify(partial.kind === "nudge" ? "nudge" : partial.kind === "voice" ? "voice" : partial.image ? "photo" : "message");
+      if (typeof stopTyping === "function") stopTyping();
+      if (opts.notify) Cloud.notify(...opts.notify);
+      else Cloud.notify(partial.kind === "nudge" ? "nudge" : partial.kind === "voice" ? "voice" : partial.image ? "photo" : "message");
       return true;
     }
+
+    // ---- Search, photos, check-ins, send later (chat-extras.js) ----
+    function showMessage(id) {
+      const all = loadMessages();
+      const idx = all.findIndex((m) => m.id === id);
+      if (idx < 0) return Toast.show("That message is no longer here.");
+      const need = all.length - idx + 5;
+      if (need > (Number(messagesEl.dataset.limit) || PAGE)) {
+        messagesEl.dataset.limit = String(need);
+        messages = all;
+        renderMessageList(messagesEl, messages, me, { stickToBottom: false });
+      }
+      requestAnimationFrame(() => jumpTo(id));
+    }
+    const extras = {
+      me,
+      other,
+      root,
+      loadMessages,
+      showMessage,
+      send: (partial, opts) => send(partial, opts),
+      textarea,
+      syncComposer: () => syncComposer(),
+      statusText: () => statusFor(other),
+      openWallpaper: () => Wallpaper.openPicker(() => Wallpaper.apply(root.querySelector(".chat-view"))),
+    };
+    root.querySelector("#chat-info-btn").addEventListener("click", () => ChatExtras.openInfo(extras));
+    const onFind = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && document.contains(messagesEl) && !document.body.classList.contains("has-modal")) {
+        e.preventDefault();
+        ChatExtras.openSearch(extras);
+      }
+    };
+    document.addEventListener("keydown", onFind);
+    Router.onLeave(() => document.removeEventListener("keydown", onFind));
+    Router.onLeave(ChatExtras.watchScheduledBar(extras, root.querySelector("#scheduled-bar")));
 
     // "Thinking of you" heartbeat
     Heartbeat.bind(root.querySelector("#nudge-btn"), (level) => {
@@ -652,12 +733,16 @@ const Chat = (() => {
         else Camera.capture().then((file) => file && sendPhotoFile(file));
       }
       else if (kind === "wallpaper") Wallpaper.openPicker(() => Wallpaper.apply(root.querySelector(".chat-view")));
+      else if (kind === "checkin") ChatExtras.openCheckins(extras);
+      else if (kind === "later") ChatExtras.openSchedule(extras);
     });
 
     async function handlePhoto(input) {
-      const file = input.files && input.files[0];
+      const files = Array.from(input.files || []).slice(0, 10);
       input.value = "";
-      if (file) sendPhotoFile(file);
+      if ((input.files && input.files.length) > 10) Toast.show("Sending the first 10 photos.");
+      // One after another, so they arrive in the order you picked them.
+      for (const file of files) await sendPhotoFile(file);
     }
     async function sendPhotoFile(file) {
       try {
@@ -690,10 +775,20 @@ const Chat = (() => {
 
     // Double tap / double click a bubble to heart it.
     function toggleHeart(id) {
+      toggleReaction(id, "❤️");
+    }
+    function toggleReaction(id, emoji) {
       const latest = loadMessages().map((m) => {
         if (m.id !== id) return m;
-        const hearts = Array.isArray(m.hearts) ? m.hearts : [];
-        return { ...m, hearts: hearts.includes(me.id) ? hearts.filter((h) => h !== me.id) : [...hearts, me.id] };
+        const current = myReaction(m, me);
+        const reactions = { ...(m.reactions && typeof m.reactions === "object" ? m.reactions : {}) };
+        const hearts = (Array.isArray(m.hearts) ? m.hearts : []).filter((h) => h !== me.id);
+        if (current === emoji) delete reactions[me.id];
+        else {
+          reactions[me.id] = emoji;
+          if (emoji === "❤️") hearts.push(me.id); // older versions read hearts
+        }
+        return { ...m, reactions, hearts };
       });
       saveMessages(latest);
       messages = latest;
@@ -995,7 +1090,7 @@ const Chat = (() => {
       if (!m || m.kind === "nudge") return;
       if (navigator.vibrate) navigator.vibrate(12);
       const mine = m.from === me.id;
-      const hearted = (m.hearts || []).includes(me.id);
+      const current = myReaction(m, me);
       const text = (m.text || "").trim();
       const action = (key, icon, label, cls = "") =>
         `<button type="button" class="sheet-action ${cls}" data-action="${key}">${UI.icon(icon)}<span>${label}</span></button>`;
@@ -1003,16 +1098,24 @@ const Chat = (() => {
         variant: "modal__panel--actions",
         label: "Message actions",
         content: `
+          <div class="sheet-reacts" role="group" aria-label="React">
+            ${REACTIONS.map((e) => `<button type="button" class="sheet-react${current === e ? " is-on" : ""}" data-react="${e}" aria-label="React ${e}" aria-pressed="${current === e}">${e}</button>`).join("")}
+          </div>
           <p class="sheet-preview">${UI.escape(snippet(m) || "Message")}</p>
           <div class="sheet-actions">
             ${action("reply", "reply", "Reply")}
-            ${action("heart", "us", hearted ? "Remove heart" : "Heart it", hearted ? "" : "sheet-action--wax")}
             ${canEdit(m, me) ? action("edit", "pencil", "Edit") : ""}
             ${text ? action("copy", "copy", "Copy text") : ""}
             ${mine ? action("delete", "trash", "Delete for both of us", "sheet-action--danger") : ""}
           </div>`,
       });
       panel.addEventListener("click", async (e) => {
+        const react = e.target.closest("[data-react]");
+        if (react) {
+          UI.closeModal();
+          setTimeout(() => toggleReaction(id, react.dataset.react), 120);
+          return;
+        }
         const btn = e.target.closest("[data-action]");
         if (!btn) return;
         const what = btn.dataset.action;
@@ -1122,13 +1225,51 @@ const Chat = (() => {
     // Live updates from the other person (cloud mode).
     const statusEl = root.querySelector("#chat-status");
     const presenceDot = root.querySelector(".avatar__presence");
+    let typingExpiry = null;
     function paintPresence() {
-      statusEl.textContent = statusFor(other);
+      const since = Cloud.isActive() ? typingSince(other) : 0;
+      statusEl.textContent = since ? "typing…" : statusFor(other);
+      statusEl.classList.toggle("chat-header__status--typing", Boolean(since));
       if (presenceDot) presenceDot.hidden = Cloud.isActive() && !isOnline(other);
+      // Three soft dots at the bottom of the chat while they type.
+      let row = messagesEl.querySelector(":scope > .typing-row");
+      if (since && !row) {
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+        row = document.createElement("div");
+        row.className = "typing-row";
+        row.setAttribute("aria-label", `${other.displayName} is typing`);
+        row.innerHTML = `<span class="typing-bubble"><i></i><i></i><i></i></span>`;
+        messagesEl.appendChild(row);
+        if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (!since && row) row.remove();
+      clearTimeout(typingExpiry);
+      if (since) typingExpiry = setTimeout(paintPresence, TYPING_WINDOW - (Date.now() - since) + 150);
     }
     paintPresence();
     const presenceTimer = setInterval(paintPresence, 30 * 1000);
-    Router.onLeave(() => clearInterval(presenceTimer));
+    Router.onLeave(() => {
+      clearInterval(presenceTimer);
+      clearTimeout(typingExpiry);
+      stopTyping();
+    });
+
+    // Let them see "typing…": at most one small update every few seconds.
+    let typingSentAt = 0;
+    function noteTyping() {
+      if (!Cloud.isActive() || editing) return;
+      const has = textarea.value.trim().length > 0;
+      if (has && Date.now() - typingSentAt > 4000) {
+        typingSentAt = Date.now();
+        Cloud.setTyping(true);
+      } else if (!has) stopTyping();
+    }
+    function stopTyping() {
+      if (!typingSentAt) return;
+      typingSentAt = 0;
+      Cloud.setTyping(false);
+    }
+    textarea.addEventListener("input", noteTyping);
+    textarea.addEventListener("blur", () => setTimeout(() => document.activeElement !== textarea && stopTyping(), 1500));
 
     const off = Storage.onChange((kind) => {
       if (!document.contains(messagesEl)) return;
@@ -1202,8 +1343,15 @@ const Chat = (() => {
   // Presence is { t: lastSeenMs, on: appOpen } (older versions stored a number).
   function presenceOf(user) {
     const p = Storage.getPresence()[user.id];
-    if (typeof p === "number") return { t: p, on: true };
-    return p && typeof p === "object" ? { t: Number(p.t) || 0, on: Boolean(p.on) } : null;
+    if (typeof p === "number") return { t: p, on: true, typing: 0 };
+    return p && typeof p === "object" ? { t: Number(p.t) || 0, on: Boolean(p.on), typing: Number(p.typing) || 0 } : null;
+  }
+
+  const TYPING_WINDOW = 7000;
+  function typingSince(user) {
+    const p = presenceOf(user);
+    if (!p || !p.on || !p.typing) return 0;
+    return Date.now() - p.typing < TYPING_WINDOW ? p.typing : 0;
   }
 
   function isOnline(user) {

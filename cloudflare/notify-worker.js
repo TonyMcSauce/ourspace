@@ -29,7 +29,9 @@
  *   POST /notify  { kind }   -> notifies the other person
  *   POST /ice                -> short-lived call relay details (TURN), so
  *                               calls connect even on strict networks
- * Cron (daily): notifies you both when a time capsule or dated note opens.
+ * Cron:
+ *   daily (0 6 * * *)   notifies you both when a capsule or dated note opens
+ *   every minute        delivers scheduled messages that are due
  */
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -46,6 +48,16 @@ const KINDS = {
   capsule: { body: (n) => `${n} sealed a time capsule for you`, route: "together" },
   memory: { body: (n) => `${n} added a new memory`, route: "memories" },
   call: { body: (n) => `${n} is calling you`, route: "chat", urgent: true },
+  // Only these fixed phrases ever appear; anything else is a plain "checked in".
+  checkin: { body: (n, p) => (CHECKINS[p.preset] ? `${n}: ${CHECKINS[p.preset]}` : `${n} checked in`), route: "chat" },
+};
+const CHECKINS = {
+  home: "Home safe 🏠",
+  leaving: "Leaving work 🚗",
+  onway: "On my way 🏃",
+  morning: "Good morning ☀️",
+  night: "Goodnight 🌙",
+  miss: "Miss you 🥺",
 };
 
 let jwks = { keys: null, until: 0 };
@@ -317,7 +329,7 @@ async function handleNotify(request, env) {
   // No buzz while they're looking at the app anyway (calls always ring).
   if (!KINDS[kind].urgent && (await isActive(env, to))) return { skipped: "they're in the app" };
   const name = parsePairs(env.NAMES)[from] || "Your love";
-  return pushTo(env, to, { body: KINDS[kind].body(name), route: KINDS[kind].route, tag: kind, urgent: KINDS[kind].urgent });
+  return pushTo(env, to, { body: KINDS[kind].body(name, payload), route: KINDS[kind].route, tag: kind, urgent: KINDS[kind].urgent });
 }
 
 // Calls: short-lived relay (TURN) details, only for the two of you.
@@ -340,6 +352,63 @@ async function handleIce(request, env) {
     urls: [].concat(s.urls || []).filter((u) => !/:53(\?|$)/.test(u)),
   }));
   return { iceServers };
+}
+
+// Firestore REST values from plain JS
+function encode(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === "boolean") return { booleanValue: v };
+  if (typeof v === "number") return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(encode) } };
+  if (typeof v === "object") return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, encode(x)])) } };
+  return { stringValue: String(v) };
+}
+
+// Every minute: deliver scheduled messages that are due.
+async function deliverScheduled(env, now = Date.now()) {
+  const root = docsRoot(env);
+  const res = await fetch(`https://firestore.googleapis.com/v1/${root}/spaces/${env.SPACE_ID}:runQuery`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await googleToken(env)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: "scheduled" }],
+        where: { fieldFilter: { field: { fieldPath: "sendAt" }, op: "LESS_THAN_OR_EQUAL", value: { integerValue: String(now) } } },
+        limit: 20,
+      },
+    }),
+  });
+  if (!res.ok) throw new HttpError(502, `Couldn't read scheduled messages (${res.status})`);
+  const due = (await res.json()).filter((r) => r.document).map((r) => ({ name: r.document.name, ...decodeFields(r.document.fields) }));
+  const users = Object.values(parsePairs(env.ALLOWED_USERS));
+  const names = parsePairs(env.NAMES);
+  let delivered = 0;
+  for (const s of due) {
+    if (!users.includes(s.from) || typeof s.text !== "string" || !s.text.trim()) {
+      await fetch(`https://firestore.googleapis.com/v1/${s.name}`, { method: "DELETE", headers: { Authorization: `Bearer ${await googleToken(env)}` } });
+      continue;
+    }
+    const id = `m${now.toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const msg = { id, from: s.from, text: s.text.slice(0, 5000), ts: Date.now(), status: "sent", scheduled: true };
+    // Add the message and remove the schedule together, so it's sent once.
+    const commit = await fetch(`https://firestore.googleapis.com/v1/${root}:commit`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${await googleToken(env)}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        writes: [
+          { update: { name: `${root}/spaces/${env.SPACE_ID}/messages/${id}`, fields: encode(msg).mapValue.fields }, currentDocument: { exists: false } },
+          { delete: s.name, currentDocument: { exists: true } },
+        ],
+      }),
+    });
+    if (!commit.ok) continue; // already delivered by another run, or a hiccup; tried again next minute
+    delivered++;
+    const to = users.find((u) => u !== s.from);
+    if (to && !(await isActive(env, to).catch(() => false))) {
+      await pushTo(env, to, { body: KINDS.message.body(names[s.from] || "Your love"), route: "chat", tag: "message" }).catch(() => {});
+    }
+  }
+  return { due: due.length, delivered };
 }
 
 // Daily: capsules and dated love notes that open today.
@@ -385,9 +454,13 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(dailyOpenings(env).catch((err) => console.error("daily openings failed", err)));
+    if (event.cron === "0 6 * * *") {
+      ctx.waitUntil(dailyOpenings(env).catch((err) => console.error("daily openings failed", err)));
+    } else {
+      ctx.waitUntil(deliverScheduled(env).catch((err) => console.error("scheduled delivery failed", err)));
+    }
   },
 
   // Exposed for tests only.
-  _test: { verifyIdToken, handleIce, parsePairs, decodeFields, dailyOpenings, reset: () => ((jwks = { keys: null, until: 0 }), (google = { token: null, until: 0 }), recent.clear()) },
+  _test: { verifyIdToken, handleIce, deliverScheduled, encode, parsePairs, decodeFields, dailyOpenings, reset: () => ((jwks = { keys: null, until: 0 }), (google = { token: null, until: 0 }), recent.clear()) },
 };
