@@ -644,9 +644,6 @@ input[type="date"].field__input { appearance: none; -webkit-appearance: none; }
   font-family: var(--mono); font-size: 0.64rem; opacity: 0.6;
 }
 .msg-status { letter-spacing: -0.2em; margin-right: 0.2em; }
-.msg-status--read { color: var(--wax); opacity: 1; }
-.msg--mine .msg-status--read { color: #ff8f78; }
-[data-theme="dark"] .msg--mine .msg-status--read { color: var(--wax-deep); }
 
 .msg__heart {
   position: absolute; bottom: -11px;
@@ -1252,11 +1249,10 @@ body.is-typing .chat-input { padding-bottom: max(0.55rem, env(safe-area-inset-bo
 }
 .chat-view--deep .day-divider, .chat-view--deep .nudge-line { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
 :root:not([data-theme="dark"]) .chat-view--deep .msg--mine .msg__bubble { background: var(--wax); color: #fff8ef; }
-:root:not([data-theme="dark"]) .chat-view--deep .msg--mine .msg-status--read { color: #fff8ef; }
 .chat-view--deep .msg--theirs .msg__bubble { border-color: transparent; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
 .chat-view--photo .msg--theirs .msg__bubble {
-  background: color-mix(in srgb, var(--card) 80%, transparent);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  /* Solid enough to read without a live blur (blur on every bubble makes scrolling stutter). */
+  background: color-mix(in srgb, var(--card) 92%, transparent);
 }
 .chat-view--photo .msg--mine .msg__bubble { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
 .chat-view--deep .msg__swipe-icon, .chat-view--deep .msg__reply-btn { color: rgba(255, 248, 239, 0.8); }
@@ -1936,7 +1932,9 @@ body.is-typing .chat-input { padding-bottom: max(0.55rem, env(safe-area-inset-bo
   animation: shimmer 1.4s linear infinite;
 }
 .msg__image img { height: auto; }
-.msg__image img:not(.media--ready):not([width]) { min-width: 200px; min-height: 180px; }
+/* Older photos have no saved size: give them a steady frame so nothing
+   jumps as they load (iPhone doesn't hold your place when content grows). */
+.msg__image img:not([width]) { width: min(240px, 62vw); aspect-ratio: 4 / 5; object-fit: cover; }
 .media--ready { animation: fade 320ms var(--ease); }
 .media--missing { background-image: none !important; animation: none !important; }
 .voice--loading .voice__play { opacity: 0.6; }
@@ -2041,7 +2039,7 @@ body.is-typing .chat-input { padding-bottom: max(0.55rem, env(safe-area-inset-bo
 @keyframes msg-in { from { opacity: 0; transform: translateY(10px) scale(0.92); } }
 
 /* Ticks: grey sent/delivered, blue read */
-.msg-status { color: inherit; opacity: 0.7; }
+.msg-status { color: inherit; opacity: 0.7; transition: color 300ms var(--ease); }
 .msg-status--read, .msg--mine .msg-status--read { color: #4fb6f5; opacity: 1; }
 [data-theme="dark"] .msg--mine .msg-status--read { color: #1478c8; }
 :root:not([data-theme="dark"]) .chat-view--deep .msg--mine .msg-status--read { color: #d6efff; }

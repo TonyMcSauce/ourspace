@@ -16,6 +16,13 @@
 const Calls = (() => {
   const RING_MS = 45 * 1000;
   const ICE = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
+  const CONNECT_MS = 30 * 1000; // give up if the phones can't reach each other
+
+  // Direct routes first; the relay (if set up) for networks that block them.
+  async function iceConfig() {
+    const relay = await Cloud.iceServers();
+    return relay.length ? [...ICE, ...relay] : ICE;
+  }
 
   let active = null; // the one call in progress
   let incomingOff = null;
@@ -157,8 +164,8 @@ const Calls = (() => {
   // ---------------------------------------------------------------
   // Shared connection plumbing
   // ---------------------------------------------------------------
-  function connect(call, stream, role) {
-    const pc = new RTCPeerConnection({ iceServers: ICE });
+  function connect(call, stream, role, iceServers = ICE) {
+    const pc = new RTCPeerConnection({ iceServers });
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
     const remote = new MediaStream();
     pc.ontrack = (e) => {
@@ -178,7 +185,10 @@ const Calls = (() => {
         if (!active.restarted && pc.restartIce) {
           active.restarted = true;
           pc.restartIce();
-        } else finish("dropped");
+        } else {
+          logRoutes(pc);
+          finish(active.connectedAt ? "dropped" : "failed");
+        }
       }
     };
     const offCands = ref.collection("candidates").onSnapshot((snap) => {
@@ -193,6 +203,31 @@ const Calls = (() => {
     active = { call, pc, stream, remote, role, ref, offs: [offCands], pending: [], facing: "user", connectedAt: 0, timer: null, ringTimer: null, restarted: false };
     attachLocal(stream);
     return active;
+  }
+
+  /** Once both sides have agreed, the phones get 30 seconds to find each other. */
+  function watchConnect(a) {
+    clearTimeout(a.connectTimer);
+    a.connectTimer = setTimeout(() => {
+      if (active === a && !a.connectedAt) {
+        logRoutes(a.pc);
+        finish("failed");
+      }
+    }, CONNECT_MS);
+  }
+
+  /** For troubleshooting: which kinds of route each phone found. */
+  async function logRoutes(pc) {
+    try {
+      const stats = await pc.getStats();
+      const local = new Set();
+      const remote = new Set();
+      stats.forEach((r) => {
+        if (r.type === "local-candidate") local.add(r.candidateType);
+        if (r.type === "remote-candidate") remote.add(r.candidateType);
+      });
+      console.info("Call routes: this phone", [...local], "other phone", [...remote]);
+    } catch {}
   }
 
   function flushPending() {
@@ -243,6 +278,7 @@ const Calls = (() => {
     const placeholder = { id: "pending", kind };
     mount(placeholder, peer, "outgoing");
     sound(); // unlock audio while we still have the tap
+    const ice = iceConfig();
     let stream;
     try {
       stream = await getMedia(kind);
@@ -252,7 +288,7 @@ const Calls = (() => {
     }
     const ref = calls().doc();
     const call = { id: ref.id, from: me().id, to: peer.id, kind, state: "ringing", ts: Date.now() };
-    const a = connect(call, stream, "caller");
+    const a = connect(call, stream, "caller", await ice);
     try {
       const offer = await a.pc.createOffer();
       await a.pc.setLocalDescription(offer);
@@ -272,11 +308,13 @@ const Calls = (() => {
         const d = doc.data();
         if (!d || !active || active.call.id !== call.id) return;
         if (d.answer && !a.pc.currentRemoteDescription) {
-          a.pc.setRemoteDescription(d.answer).then(flushPending).catch(() => finish("dropped"));
+          a.pc.setRemoteDescription(d.answer).then(flushPending).catch(() => finish("failed"));
           setStatus("Connecting…");
+          stopTone();
+          watchConnect(a);
         }
         if (d.state === "declined") finish("declined", { remote: true });
-        if (d.state === "ended" && d.endedBy !== me().id) finish("ended", { remote: true });
+        if (d.state === "ended" && d.endedBy !== me().id) finish(d.endedReason === "failed" && !a.connectedAt ? "failed" : "ended", { remote: true });
       })
     );
     a.ringTimer = setTimeout(() => {
@@ -342,6 +380,7 @@ const Calls = (() => {
     stopTone();
     setStatus("Connecting…");
     sound();
+    const ice = iceConfig();
     let stream;
     try {
       stream = await getMedia(call.kind);
@@ -364,8 +403,10 @@ const Calls = (() => {
     }
     // Swap the incoming screen for the in-call one.
     mount(call, CONFIG.users[call.from], "outgoing");
-    const a = connect(call, stream, "callee");
+    setStatus("Connecting…");
+    const a = connect(call, stream, "callee", await ice);
     a.accepted = true;
+    watchConnect(a);
     try {
       await a.pc.setRemoteDescription(call.offer);
       flushPending();
@@ -374,12 +415,12 @@ const Calls = (() => {
       await ref.update({ answer: { type: answer.type, sdp: answer.sdp } });
     } catch (err) {
       console.error(err);
-      return finish("dropped");
+      return finish("failed");
     }
     a.offs.push(
       ref.onSnapshot((doc) => {
         const d = doc.data();
-        if (d && d.state === "ended" && d.endedBy !== me().id) finish("ended", { remote: true });
+        if (d && d.state === "ended" && d.endedBy !== me().id) finish(d.endedReason === "failed" && !a.connectedAt ? "failed" : "ended", { remote: true });
       })
     );
   }
@@ -400,6 +441,7 @@ const Calls = (() => {
     if (!active) return;
     clearInterval(active.timer);
     clearTimeout(active.ringTimer);
+    clearTimeout(active.connectTimer);
     (active.offs || []).forEach((off) => off && off());
     if (active.stream) active.stream.getTracks().forEach((t) => t.stop());
     if (active.pc) {
@@ -410,7 +452,7 @@ const Calls = (() => {
     active = null;
   }
 
-  /** reason: ended | missed | declined | dropped | cancelled */
+  /** reason: ended | missed | declined | dropped | failed | cancelled */
   function finish(reason, { remote = false } = {}) {
     if (!active) return;
     const a = active;
@@ -418,11 +460,11 @@ const Calls = (() => {
     stopTone();
     if (!remote && a.ref) {
       const state = reason === "missed" ? "missed" : reason === "cancelled" ? "cancelled" : "ended";
-      a.ref.update({ state, endedAt: Date.now(), endedBy: me().id }).catch(() => {});
+      a.ref.update({ state, endedAt: Date.now(), endedBy: me().id, endedReason: reason }).catch(() => {});
     }
     // The caller writes one line into the chat for the record.
     if (a.role === "caller") {
-      const callState = duration ? "ended" : reason === "declined" ? "declined" : "missed";
+      const callState = duration ? "ended" : reason === "declined" ? "declined" : reason === "failed" ? "failed" : "missed";
       const messages = Storage.getMessages() || [];
       Storage.setMessages([
         ...messages,
@@ -432,11 +474,11 @@ const Calls = (() => {
     cleanup();
     const peer = other();
     setStatus(
-      reason === "declined" ? `${peer.displayName} can't talk right now` : reason === "missed" ? "No answer" : reason === "dropped" ? "Call dropped" : duration ? fmt(duration) : "Call ended"
+      reason === "declined" ? `${peer.displayName} can't talk right now` : reason === "missed" ? "No answer" : reason === "dropped" ? "Call dropped" : reason === "failed" ? "Couldn't connect. Try again in a moment" : duration ? fmt(duration) : "Call ended"
     );
     const screen = document.querySelector(".call-screen:not(.call-screen--leaving)");
     if (screen) screen.classList.add("call-screen--ending");
-    setTimeout(unmount, reason === "ended" && duration ? 900 : 1500);
+    setTimeout(unmount, reason === "ended" && duration ? 900 : reason === "failed" ? 2800 : 1500);
   }
 
   // ---------------------------------------------------------------

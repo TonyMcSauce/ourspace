@@ -21,10 +21,14 @@
  *   APP_URL                  where a tapped notification opens
  *   TIMEZONE                 for daily capsule/note openings, e.g. "UTC"
  *   FIREBASE_SERVICE_ACCOUNT (secret) the Firebase private key JSON
+ *   TURN_KEY_ID              (optional) Cloudflare Realtime TURN key id
+ *   TURN_KEY_API_TOKEN       (optional, secret) that key's API token
  *
  * Endpoints:
  *   GET  /        health check
  *   POST /notify  { kind }   -> notifies the other person
+ *   POST /ice                -> short-lived call relay details (TURN), so
+ *                               calls connect even on strict networks
  * Cron (daily): notifies you both when a time capsule or dated note opens.
  */
 
@@ -316,6 +320,28 @@ async function handleNotify(request, env) {
   return pushTo(env, to, { body: KINDS[kind].body(name), route: KINDS[kind].route, tag: kind, urgent: KINDS[kind].urgent });
 }
 
+// Calls: short-lived relay (TURN) details, only for the two of you.
+async function handleIce(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  const claims = await verifyIdToken(auth.replace(/^Bearer\s+/i, ""), env.PROJECT_ID);
+  const users = parsePairs(env.ALLOWED_USERS);
+  if (!users[String(claims.email || "").toLowerCase()]) throw new HttpError(403, "This account isn't part of the space");
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return { iceServers: [] };
+  const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ttl: 6 * 60 * 60 }),
+  });
+  if (!res.ok) throw new HttpError(502, "Relay unavailable");
+  const data = await res.json();
+  // Browsers block port 53; drop it so nothing waits on a timeout.
+  const iceServers = (data.iceServers || []).map((s) => ({
+    ...s,
+    urls: [].concat(s.urls || []).filter((u) => !/:53(\?|$)/.test(u)),
+  }));
+  return { iceServers };
+}
+
 // Daily: capsules and dated love notes that open today.
 async function dailyOpenings(env) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: env.TIMEZONE || "UTC" }).format(new Date());
@@ -346,12 +372,13 @@ export default {
     }
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") {
-      return json({ ok: true, service: "ourspace-notify", ready: Boolean(env.FIREBASE_SERVICE_ACCOUNT) }, 200, cors);
+      return json({ ok: true, service: "ourspace-notify", ready: Boolean(env.FIREBASE_SERVICE_ACCOUNT), relay: Boolean(env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN) }, 200, cors);
     }
-    if (request.method !== "POST" || url.pathname !== "/notify") return json({ error: "Not found" }, 404, cors);
+    const routes = { "/notify": handleNotify, "/ice": handleIce };
+    if (request.method !== "POST" || !routes[url.pathname]) return json({ error: "Not found" }, 404, cors);
     if (!cors.allowed) return json({ error: "Not allowed from this site" }, 403, cors);
     try {
-      return json(await handleNotify(request, env), 200, cors);
+      return json(await routes[url.pathname](request, env), 200, cors);
     } catch (err) {
       return json({ error: err.message || "Something went wrong" }, err.status || 500, cors);
     }
@@ -362,5 +389,5 @@ export default {
   },
 
   // Exposed for tests only.
-  _test: { verifyIdToken, parsePairs, decodeFields, dailyOpenings, reset: () => ((jwks = { keys: null, until: 0 }), (google = { token: null, until: 0 }), recent.clear()) },
+  _test: { verifyIdToken, handleIce, parsePairs, decodeFields, dailyOpenings, reset: () => ((jwks = { keys: null, until: 0 }), (google = { token: null, until: 0 }), recent.clear()) },
 };

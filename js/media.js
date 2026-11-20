@@ -106,7 +106,7 @@ const Media = (() => {
               observer.unobserve(e.target);
               load(e.target.getAttribute("data-media")).then((url) => apply(e.target, url));
             }),
-          { rootMargin: "600px 0px" }
+          { rootMargin: "1400px 0px" }
         )
       : null;
 
