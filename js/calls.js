@@ -166,11 +166,24 @@ const Calls = (() => {
   // ---------------------------------------------------------------
   function connect(call, stream, role, iceServers = ICE) {
     const pc = new RTCPeerConnection({ iceServers });
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    // The caller offers its tracks right away; the answering phone attaches
+    // its own once it has read the offer (see sendOwnTracks), which is the
+    // order Safari needs to actually send its camera.
+    if (role === "caller") stream.getTracks().forEach((t) => pc.addTrack(t, stream));
     const remote = new MediaStream();
     pc.ontrack = (e) => {
-      e.streams[0] ? e.streams[0].getTracks().forEach((t) => remote.addTrack(t)) : remote.addTrack(e.track);
-      attachRemote(remote);
+      const add = (t) => {
+        if (!remote.getTracks().includes(t)) remote.addTrack(t);
+      };
+      e.streams[0] ? e.streams[0].getTracks().forEach(add) : add(e.track);
+      add(e.track);
+      // Video often starts "muted" until the first frames arrive (more so
+      // through the relay); redraw then so it never stays black.
+      e.track.addEventListener("unmute", () => {
+        const v = document.querySelector(".call-screen__remote");
+        if (!v || !v.videoWidth || v.paused) attachRemote(remote, true);
+      });
+      attachRemote(remote, true);
     };
     const ref = calls().doc(call.id);
     pc.onicecandidate = (e) => {
@@ -243,9 +256,27 @@ const Calls = (() => {
       v.classList.toggle("call-screen__local--mirror", active ? active.facing === "user" : true);
     }
   }
-  function attachRemote(stream) {
+  /** Answering side: put our camera and mic into the slots the offer made. */
+  function sendOwnTracks(pc, stream) {
+    const used = new Set();
+    stream.getTracks().forEach((track) => {
+      const t = pc.getTransceivers().find((x) => !used.has(x) && !x.stopped && x.receiver && x.receiver.track && x.receiver.track.kind === track.kind && !x.sender.track);
+      if (t) {
+        used.add(t);
+        t.direction = "sendrecv";
+        t.sender.replaceTrack(track);
+        if (t.sender.setStreams) t.sender.setStreams(stream);
+      } else {
+        pc.addTrack(track, stream);
+      }
+    });
+  }
+
+  function attachRemote(stream, force = false) {
     const v = document.querySelector(".call-screen:not(.call-screen--leaving) .call-screen__remote");
-    if (!v || v.srcObject === stream) return;
+    if (!v) return;
+    if (v.srcObject === stream && !force) return;
+    if (v.srcObject === stream) v.srcObject = null; // make the player look again
     v.srcObject = stream;
     v.play().catch(() => {
       // Some phones need one more tap before sound can play.
@@ -409,6 +440,7 @@ const Calls = (() => {
     watchConnect(a);
     try {
       await a.pc.setRemoteDescription(call.offer);
+      sendOwnTracks(a.pc, stream);
       flushPending();
       const answer = await a.pc.createAnswer();
       await a.pc.setLocalDescription(answer);
