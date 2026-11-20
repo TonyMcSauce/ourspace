@@ -237,17 +237,124 @@ const Cloud = (() => {
     space().collection("media").doc(id).delete().catch(() => {});
   }
 
-  function beat() {
-    if (!db || !userId || document.visibilityState !== "visible") return;
+  // Presence: when you were last here, and whether the app is open now.
+  // The notifier uses "open" to stay quiet while you're already looking.
+  function beat(open = document.visibilityState === "visible") {
+    if (!db || !userId) return;
+    if (open && document.visibilityState !== "visible") return;
     space()
       .collection("meta")
       .doc("presence")
-      .set({ [userId]: Date.now() }, { merge: true })
+      .set({ [userId]: { t: Date.now(), on: open } }, { merge: true })
       .catch(() => {});
   }
 
   function onVisibility() {
-    if (document.visibilityState === "visible") beat();
+    beat(document.visibilityState === "visible");
+  }
+  const onPageHide = () => beat(false);
+
+  // ---------------------------------------------------------------
+  // Notifications (sent by the Cloudflare notifier, see cloudflare/)
+  // ---------------------------------------------------------------
+  const push = CONFIG.push || {};
+  const pushReady = () => Boolean(enabled && push.workerUrl && push.vapidKey);
+
+  /** Ask the notifier to tap the other phone. Fire and forget. */
+  async function notify(kind) {
+    if (!pushReady() || !userId || !auth || !auth.currentUser) return;
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      await fetch(`${push.workerUrl}/notify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+        keepalive: true,
+      });
+    } catch (err) {
+      console.info("Notification not sent", err);
+    }
+  }
+
+  function pushSupport() {
+    if (!pushReady()) return "unconfigured";
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+      return iOS && !standalone ? "needs-home-screen" : "unsupported";
+    }
+    if (Notification.permission === "denied") return "denied";
+    return "ok";
+  }
+
+  async function messaging() {
+    if (!window.firebase.messaging) await loadScript(SDK + "firebase-messaging-compat.js");
+    return firebase.messaging();
+  }
+
+  async function currentPushToken() {
+    const registration = await navigator.serviceWorker.ready;
+    return (await messaging()).getToken({ vapidKey: push.vapidKey, serviceWorkerRegistration: registration });
+  }
+
+  async function savePushToken(token) {
+    await space()
+      .collection("meta")
+      .doc("push")
+      .set({ [userId]: { tokens: firebase.firestore.FieldValue.arrayUnion(token), at: Date.now() } }, { merge: true });
+    try {
+      localStorage.setItem("ourspace_push_token", token);
+    } catch {}
+  }
+
+  /** Turn notifications on for this phone. Must be called from a tap. */
+  async function enablePush() {
+    const support = pushSupport();
+    if (support !== "ok") return support;
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return permission === "denied" ? "denied" : "dismissed";
+    const token = await currentPushToken();
+    if (!token) throw new Error("Couldn't register this phone for notifications.");
+    await savePushToken(token);
+    return "on";
+  }
+
+  async function disablePush() {
+    let token = null;
+    try {
+      token = localStorage.getItem("ourspace_push_token");
+      localStorage.removeItem("ourspace_push_token");
+    } catch {}
+    try {
+      if (token) {
+        await space()
+          .collection("meta")
+          .doc("push")
+          .set({ [userId]: { tokens: firebase.firestore.FieldValue.arrayRemove(token), at: Date.now() } }, { merge: true });
+      }
+      await (await messaging()).deleteToken();
+    } catch (err) {
+      console.info("Couldn't fully remove this phone", err);
+    }
+  }
+
+  function pushOn() {
+    try {
+      return Boolean(localStorage.getItem("ourspace_push_token")) && "Notification" in window && Notification.permission === "granted";
+    } catch {
+      return false;
+    }
+  }
+
+  /** Tokens can change; keep this phone's up to date quietly. */
+  async function refreshPush() {
+    if (!pushReady() || !pushOn()) return;
+    try {
+      const token = await currentPushToken();
+      if (token && token !== localStorage.getItem("ourspace_push_token")) await savePushToken(token);
+    } catch (err) {
+      console.info("Couldn't refresh notifications", err);
+    }
   }
 
   async function start(user) {
@@ -264,6 +371,8 @@ const Cloud = (() => {
       if (userId && typeof Media !== "undefined") Media.migrate();
     }, 4000);
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    setTimeout(refreshPush, 6000);
   }
 
   function friendlyAuthError(err) {
@@ -289,10 +398,14 @@ const Cloud = (() => {
   }
 
   async function signOut() {
+    // A signed-out phone shouldn't keep getting the other person's notifications.
+    if (pushOn()) await disablePush();
+    beat(false);
     unsubs.forEach((off) => off());
     unsubs = [];
     clearInterval(heartbeat);
     document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("pagehide", onPageHide);
     userId = null;
     Storage.clearCache();
     if (auth) await auth.signOut();
@@ -311,5 +424,10 @@ const Cloud = (() => {
     putMedia,
     getMedia,
     deleteMedia,
+    notify,
+    pushSupport,
+    pushOn,
+    enablePush,
+    disablePush,
   };
 })();

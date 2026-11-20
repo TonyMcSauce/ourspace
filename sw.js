@@ -7,7 +7,7 @@
  * - Firebase data itself is not touched here; Firestore keeps its own
  *   offline copy.
  */
-const VERSION = "ourspace-v9";
+const VERSION = "ourspace-v10";
 const SHELL = [
   "./",
   "./index.html",
@@ -97,4 +97,46 @@ self.addEventListener("fetch", (event) => {
   if (IMMUTABLE_HOSTS.includes(url.hostname) && (url.hostname !== "www.gstatic.com" || url.pathname.startsWith("/firebasejs/"))) {
     event.respondWith(cacheFirst(request));
   }
+});
+
+// ------------------------------------------------------------------
+// Notifications. The Cloudflare notifier sends a small private payload
+// ({ title, body, url, tag }); we show it with the wax-seal icon and
+// open the right page when it's tapped.
+// ------------------------------------------------------------------
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : "" };
+  }
+  const d = payload.data || payload.notification || payload;
+  const scope = self.registration.scope;
+  const url = typeof d.url === "string" && d.url.startsWith(scope) ? d.url : scope + "#/chat";
+  event.waitUntil(
+    self.registration.showNotification(d.title || "Our Space", {
+      body: d.body || "Something new is waiting for you",
+      icon: "assets/icons/icon-192.png",
+      badge: "assets/icons/icon-192.png",
+      tag: d.tag || "ourspace",
+      renotify: true,
+      data: { url },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || self.registration.scope;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const open = clients.find((c) => c.url.startsWith(self.registration.scope));
+      if (open) {
+        open.focus();
+        return open.navigate ? open.navigate(url).catch(() => open.postMessage({ type: "open", url })) : open.postMessage({ type: "open", url });
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });

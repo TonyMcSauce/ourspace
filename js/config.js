@@ -46,6 +46,13 @@ const CONFIG = {
     appId: "1:620872244756:web:3b77f08fa84db5b4ed1101",
   },
 
+  // Notifications, sent by the small Cloudflare service in cloudflare/.
+  // Both values are public; the private key lives only in Cloudflare.
+  push: {
+    workerUrl: "https://ourspace-notify.ourspace-tony.workers.dev",
+    vapidKey: "BBKDiz4EjmlOFJz2QJ6QLUYgKy_CKVuTWeANYvRrULOE-fNS4sQqBYXb5guPJ_I7IyliVkmY4r9iCvmdY9HSnq0",
+  },
+
   // Name of your shared space in the database. No need to change it.
   spaceId: "us",
 
