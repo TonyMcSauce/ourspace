@@ -8,9 +8,9 @@ rules_version = '2';
 // The other person's items can only have the little things you're
 // meant to change (read receipts, hearts, "opened", "read").
 //
-// Before publishing: replace TONY_EMAIL_HERE and BABEGIRL_EMAIL_HERE
-// with your two Firebase sign-in emails, in lowercase. Then paste this
-// whole file into Firebase console > Firestore > Rules and press Publish.
+// Before publishing, put your two Firebase sign-in emails (lowercase)
+// into isUs() and me() below. Then paste this whole file into
+// Firebase console > Firestore Database > Rules and press Publish.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -122,7 +122,6 @@ service cloud.firestore {
 
       match /meta/{doc} {
         allow read: if isUs();
-        // "Last seen": each of you may only update your own time.
         // "Last seen" and profile photos: each of you may only change your own.
         allow create: if isUs()
           && (doc != 'presence' || data().keys().hasOnly([me()]))
