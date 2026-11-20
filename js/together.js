@@ -178,6 +178,7 @@ const Together = (() => {
       freshSlip = id;
       refresh();
       Toast.show("Folded into the jar ❤️");
+      Cloud.notify("reason");
     });
   }
 
@@ -403,6 +404,7 @@ const Together = (() => {
       UI.closeModal();
       refresh();
       Toast.show(`Sealed until ${UI.formatLongDate(openOn)} ❤️`);
+      Cloud.notify("capsule");
     });
   }
 

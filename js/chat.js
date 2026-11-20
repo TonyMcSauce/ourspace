@@ -328,6 +328,7 @@ const Chat = (() => {
       renderMessageList(messagesEl, messages, me);
       if (!Cloud.isActive()) progressStatus(msg.id);
       if (partial.kind !== "nudge") cancelReply();
+      Cloud.notify(partial.kind === "nudge" ? "nudge" : partial.kind === "voice" ? "voice" : partial.image ? "photo" : "message");
       return true;
     }
 
@@ -945,16 +946,24 @@ const Chat = (() => {
   // ---------------------------------------------------------------
   const ONLINE_WINDOW = 2 * 60 * 1000;
 
+  // Presence is { t: lastSeenMs, on: appOpen } (older versions stored a number).
+  function presenceOf(user) {
+    const p = Storage.getPresence()[user.id];
+    if (typeof p === "number") return { t: p, on: true };
+    return p && typeof p === "object" ? { t: Number(p.t) || 0, on: Boolean(p.on) } : null;
+  }
+
   function isOnline(user) {
-    const seen = Storage.getPresence()[user.id];
-    return Boolean(seen && Date.now() - seen < ONLINE_WINDOW);
+    const p = presenceOf(user);
+    return Boolean(p && p.on && Date.now() - p.t < ONLINE_WINDOW);
   }
 
   function statusFor(user) {
     if (!Cloud.isActive()) return user.statusText;
-    const seen = Storage.getPresence()[user.id];
-    if (!seen) return "not here yet";
-    if (Date.now() - seen < ONLINE_WINDOW) return "online";
+    const p = presenceOf(user);
+    if (!p || !p.t) return "not here yet";
+    const seen = p.t;
+    if (isOnline(user)) return "online";
     const when = new Date(seen);
     const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const day = UI.dayLabel(seen);

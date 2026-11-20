@@ -46,6 +46,11 @@ so the experience can be built and refined before Firebase is wired in.
   icon where iOS allows), press and hold a message to reply, heart, copy or
   delete it, a jump-to-latest button, offline and "new version ready"
   banners, and "Show earlier messages" for long histories.
+- **Notifications**: turn them on per phone in Settings. Messages, photos,
+  voice notes, heartbeats, love notes, reasons, memories and capsules
+  notify the other person, and a daily check announces capsules and dated
+  notes that open. Notifications are private ("New message from Tony"),
+  and stay quiet while the other person already has the app open.
 - **Passcode lock**: an optional 4-digit code per phone, asked on opening
   and after a minute away. The app switcher shows only a wax seal.
 - **iPhone app**: add it to your Home Screen for a proper icon, launch
@@ -89,6 +94,8 @@ Everything runs on Firebase's free Spark plan. Nothing here needs a card.
 │   ├── tilt.js          # 3D tilt + sheen for paper objects
 │   ├── us.js            # couple profile page, pulls journey.js in
 │   └── app.js           # bootstraps the app, login screen, theme, toast
+├── cloudflare/
+│   └── notify-worker.js # the notification sender (Cloudflare Worker)
 ```
 
 No build step, no bundler, no framework — open `index.html` and it runs.
@@ -216,6 +223,7 @@ spaces/us/listItems/{id}
 spaces/us/meta/favourites
 spaces/us/media/{id}       photos and voice notes, fetched only when needed
 spaces/us/meta/avatars     profile photos (small)
+spaces/us/meta/push       notification devices (each person's own)
 spaces/us/meta/song
 spaces/us/meta/countdown
 spaces/us/meta/profile
@@ -231,6 +239,26 @@ syncing again when you're back online.
 
 ---
 
+## Notifications (Cloudflare, free)
+
+Everything stays in Firebase. One small Cloudflare Worker,
+`cloudflare/notify-worker.js`, does a single job: when one of you does
+something, your phone asks it to notify the other phone through Firebase
+Cloud Messaging. It's deployed as `ourspace-notify` on
+`ourspace-tony.workers.dev`, on Cloudflare's free plan with no card.
+
+- It only accepts requests carrying a valid Firebase sign-in from one of
+  your two accounts, from your website, and only notifies the other person.
+- Notifications never include message text.
+- Devices are stored per person in `spaces/us/meta/push`; dead ones are
+  removed automatically.
+- Its one secret, `FIREBASE_SERVICE_ACCOUNT` (the Firebase private key),
+  lives only in Cloudflare's encrypted settings, never in this repo.
+- A daily run at 06:00 UTC (`TIMEZONE` setting) announces capsules and
+  dated notes that open that day.
+- iPhone: notifications need the app on the Home Screen (iOS 16.4+), then
+  Settings > Notifications in the app.
+
 ## Security considerations
 
 - `firestore.rules` lets only your two accounts in, and each of you can
@@ -238,7 +266,7 @@ syncing again when you're back online.
   capsule as the other person, change what they wrote, change a sealed
   capsule's date, or change their profile photo or "last seen". Their items
   only accept the small things you're meant to change (read receipts,
-  hearts, "opened", "read"). The rules are covered by 49 emulator tests.
+  hearts, "opened", "read"). The rules are covered by 53 emulator tests.
 - Photos and voice notes are only ever displayed if they're genuine
   image/audio data, so a tampered database value can't inject code.
 - In the Firebase console it's worth also turning off new sign-ups

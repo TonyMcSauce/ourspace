@@ -322,6 +322,20 @@ const Us = (() => {
               </span>
               <span class="settings-row__chevron">${UI.icon("chevronRight")}</span>
             </button>
+            ${
+              Cloud.enabled && CONFIG.push && CONFIG.push.workerUrl
+                ? `<div class="settings-row">
+              <span class="settings-row__icon">${UI.icon("bell")}</span>
+              <div class="settings-row__text">
+                <p class="settings-row__label" id="push-label">Notifications</p>
+                <p class="settings-row__hint" id="push-hint"></p>
+              </div>
+              <button type="button" class="toggle" id="push-toggle" role="switch" aria-checked="false" aria-labelledby="push-label">
+                <span class="toggle__thumb"></span>
+              </button>
+            </div>`
+                : ""
+            }
             <div class="settings-row">
               <span class="settings-row__icon">${UI.icon("lock")}</span>
               <div class="settings-row__text">
@@ -381,6 +395,49 @@ const Us = (() => {
         root.querySelector("#wallpaper-row .settings-row__hint").textContent = Wallpaper.nameOf(Wallpaper.current());
       })
     );
+
+    // Notifications for this phone.
+    const pushToggle = root.querySelector("#push-toggle");
+    if (pushToggle) {
+      const hint = root.querySelector("#push-hint");
+      const paint = () => {
+        const support = Cloud.pushSupport();
+        const on = support === "ok" && Cloud.pushOn();
+        pushToggle.classList.toggle("toggle--on", on);
+        pushToggle.setAttribute("aria-checked", String(on));
+        pushToggle.disabled = support !== "ok";
+        hint.textContent =
+          support === "needs-home-screen"
+            ? "Add Our Space to your Home Screen first, then turn these on there"
+            : support === "unsupported"
+            ? "This browser can't show notifications"
+            : support === "denied"
+            ? "Blocked in your settings. Allow notifications for Our Space there."
+            : on
+            ? "On for this phone"
+            : `Hear from ${other.displayName} even when the app is closed`;
+      };
+      paint();
+      pushToggle.addEventListener("click", async () => {
+        pushToggle.disabled = true;
+        try {
+          if (Cloud.pushOn()) {
+            await Cloud.disablePush();
+            Toast.show("Notifications are off for this phone.");
+          } else {
+            const result = await Cloud.enablePush();
+            if (result === "on") Toast.show("Notifications are on \u2764\uFE0F");
+            else if (result === "denied") Toast.show("Notifications are blocked. Allow them in your settings.");
+            else if (result === "dismissed") Toast.show("No problem. You can turn them on any time.");
+          }
+        } catch (err) {
+          console.error(err);
+          Toast.show("Couldn't turn on notifications. Please try again.");
+        }
+        pushToggle.disabled = false;
+        paint();
+      });
+    }
 
     const lockToggle = root.querySelector("#lock-toggle");
     lockToggle.addEventListener("click", async () => {

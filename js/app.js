@@ -368,6 +368,14 @@ const App = (() => {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (hadController) showBanner("update", "A fresh version of Our Space is ready.", "Refresh", () => location.reload());
     });
+    // A tapped notification asks the open app to go to the right page.
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (!e.data || e.data.type !== "open") return;
+      try {
+        const hash = new URL(e.data.url).hash;
+        if (/^#\/[a-z]+$/.test(hash)) location.hash = hash;
+      } catch {}
+    });
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch((err) => console.info("Offline support unavailable.", err));
     });

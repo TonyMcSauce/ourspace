@@ -369,6 +369,7 @@ const Notes = (() => {
       filter = "all";
       onChange();
       Toast.show(seal === "now" ? "Note left ❤️" : "Note sealed ❤️");
+      Cloud.notify("note");
     });
   }
 

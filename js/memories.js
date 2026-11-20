@@ -265,6 +265,7 @@ const Memories = (() => {
       UI.closeModal();
       onChange();
       Toast.show("Memory saved ❤️");
+      Cloud.notify("memory");
     });
   }
 

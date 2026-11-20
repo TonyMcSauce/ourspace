@@ -122,12 +122,15 @@ service cloud.firestore {
 
       match /meta/{doc} {
         allow read: if isUs();
-        // "Last seen" and profile photos: each of you may only change your own.
+        // "Last seen", profile photos and notification devices: each of
+        // you may only change your own.
         allow create: if isUs()
           && (doc != 'presence' || data().keys().hasOnly([me()]))
+          && (doc != 'push' || data().keys().hasOnly([me()]))
           && (doc != 'avatars' || (data().keys().hasOnly([me()]) && avatar()));
         allow update: if isUs()
           && (doc != 'presence' || onlyChanges([me()]))
+          && (doc != 'push' || onlyChanges([me()]))
           && (doc != 'avatars' || (onlyChanges([me()]) && avatar()));
         allow delete: if false;
       }
