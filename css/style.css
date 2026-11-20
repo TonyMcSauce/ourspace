@@ -2285,6 +2285,7 @@ body.in-call { overflow: hidden; }
 .call-screen__info {
   max-width: 34ch; padding: 0.35rem 0.8rem; border-radius: var(--r-full);
   background: rgba(0, 0, 0, 0.45); color: #fff8ef; font-size: 0.72rem; line-height: 1.4; text-align: center;
+  white-space: pre-line;
 }
 .call-screen__info[hidden] { display: none; }
 .call-screen--video.call-screen--live .call-screen__info { font-size: 1.15rem; }
