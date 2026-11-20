@@ -53,7 +53,9 @@ const Calls = (() => {
   function getMedia(kind, facing = "user") {
     return navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: kind === "video" ? { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+      // Phone-friendly size: sharp on a phone screen, light enough for a
+      // weak upload or the relay.
+      video: kind === "video" ? { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } } : false,
     });
   }
 
@@ -325,6 +327,26 @@ const Calls = (() => {
     }
   }
 
+  /**
+   * Keep video flowing on weaker connections: cap the data rate, keep the
+   * motion smooth and let the picture soften first.
+   */
+  async function tuneSenders(pc) {
+    for (const sender of pc.getSenders()) {
+      if (!sender.track || sender.track.kind !== "video" || !sender.getParameters) continue;
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = 600000;
+        params.encodings[0].maxFramerate = 24;
+        params.degradationPreference = "maintain-framerate";
+        await sender.setParameters(params);
+      } catch (err) {
+        console.info("Video tuning not applied", err);
+      }
+    }
+  }
+
   /** Tap the timer: what's actually arriving, for troubleshooting. */
   async function describeConnection() {
     if (!active || !active.pc) return "";
@@ -333,8 +355,10 @@ const Calls = (() => {
     stats.forEach((r) => byId.set(r.id, r));
     let video = null;
     let audio = null;
+    let out = null;
     let route = "";
     stats.forEach((r) => {
+      if (r.type === "outbound-rtp" && (r.kind || r.mediaType) === "video") out = r;
       if (r.type === "inbound-rtp" && (r.kind || r.mediaType) === "video") video = r;
       if (r.type === "inbound-rtp" && (r.kind || r.mediaType) === "audio") audio = r;
       if (r.type === "candidate-pair" && (r.nominated || r.selected) && r.state === "succeeded") {
@@ -350,15 +374,29 @@ const Calls = (() => {
       else {
         const codec = byId.get(video.codecId);
         parts.push(
-          `video ${codec ? codec.mimeType.split("/")[1] : "?"}`,
+          `receiving ${codec ? codec.mimeType.split("/")[1] : "?"}`,
           video.frameWidth ? `${video.frameWidth}×${video.frameHeight}` : "no picture yet",
+          `${Math.round(video.framesPerSecond || 0)} fps`,
           `${video.framesDecoded || 0} frames`
         );
+        const lost = video.packetsLost || 0;
+        const got = video.packetsReceived || 0;
+        if (lost > 0 && got + lost > 0) parts.push(`${Math.round((lost / (got + lost)) * 100)}% lost`);
       }
     }
     parts.push(audio && audio.bytesReceived ? "sound arriving" : "no sound arriving");
     if (route) parts.push(route);
-    return parts.join(" · ");
+    let line = parts.join(" · ");
+    if (out && active.call.kind === "video") {
+      const sending = [
+        "sending",
+        out.frameWidth ? `${out.frameWidth}×${out.frameHeight}` : "",
+        `${Math.round(out.framesPerSecond || 0)} fps`,
+        out.qualityLimitationReason && out.qualityLimitationReason !== "none" ? `limited by ${out.qualityLimitationReason}` : "",
+      ].filter(Boolean);
+      line += `\n${sending.join(" · ")}`;
+    }
+    return line;
   }
 
   function onConnected() {
@@ -368,6 +406,7 @@ const Calls = (() => {
     }
     stopTone();
     active.connectedAt = Date.now();
+    tuneSenders(active.pc);
     const screen = document.querySelector(".call-screen:not(.call-screen--leaving)");
     if (screen) screen.classList.add("call-screen--live");
     setStatus("0:00");
