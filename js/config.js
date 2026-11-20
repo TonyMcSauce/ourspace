@@ -91,6 +91,8 @@ const CONFIG = {
     profile: "ourspace_profile",
     startDateCache: "ourspace_start_date",
     wallpaper: "ourspace_wallpaper",
+    avatars: "ourspace_avatars",
+    avatarsCache: "ourspace_avatars_cache",
     wallpaperShared: "ourspace_wallpaper_shared",
   },
 };

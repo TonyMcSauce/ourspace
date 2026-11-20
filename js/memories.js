@@ -60,9 +60,11 @@ const Memories = (() => {
     return ok;
   }
 
+  // Photo: filled in lazily from the media store. Colour: only one of
+  // the app's own gradients, never a value straight from the database.
   function visual(mem) {
-    if (mem.image) return `background-image:url('${mem.image.replace(/'/g, "%27")}')`;
-    return `background:${mem.gradient || GRADIENTS[0]}`;
+    if (mem.image) return Media.attrs(mem.image, "bg");
+    return `style="background:${GRADIENTS.includes(mem.gradient) ? mem.gradient : GRADIENTS[0]}"`;
   }
 
   function cardHtml(mem, index) {
@@ -71,7 +73,7 @@ const Memories = (() => {
       <button type="button" class="polaroid" data-memory-id="${UI.escape(mem.id)}"
         style="--tilt:${tilt}deg;animation-delay:${Math.min(index, 10) * 55}ms" aria-label="${UI.escape(mem.title)}, ${UI.escape(UI.formatMonthYear(mem.date))}">
         <span class="polaroid__tape" aria-hidden="true"></span>
-        <span class="polaroid__photo" style="${visual(mem)}"></span>
+        <span class="polaroid__photo" ${visual(mem)}></span>
         <span class="polaroid__caption">${UI.escape(mem.title)}</span>
         <span class="polaroid__date">${UI.escape(UI.formatMonthYear(mem.date))}</span>
       </button>
@@ -98,7 +100,7 @@ const Memories = (() => {
       const mem = list[index];
       return `
         <div class="viewer__stage">
-          <div class="viewer__image ${mem.image ? "viewer__image--photo" : ""}" style="${visual(mem)}" role="img" aria-label="${UI.escape(mem.title)}"></div>
+          <div class="viewer__image ${mem.image ? "viewer__image--photo" : ""}" ${visual(mem)} role="img" aria-label="${UI.escape(mem.title)}"></div>
           ${list.length > 1 ? `
             <button type="button" class="viewer__nav viewer__nav--prev" data-step="-1" aria-label="Previous memory">${UI.icon("chevronLeft")}</button>
             <button type="button" class="viewer__nav viewer__nav--next" data-step="1" aria-label="Next memory">${UI.icon("chevronRight")}</button>` : ""}
@@ -127,6 +129,7 @@ const Memories = (() => {
 
     function paint() {
       host.innerHTML = body();
+      Media.hydrate(host);
     }
     function step(delta) {
       if (list.length < 2) return;
@@ -151,6 +154,7 @@ const Memories = (() => {
         });
         if (!ok) return;
         saveMemories(loadMemories().filter((m) => m.id !== mem.id));
+        Media.remove(mem.image);
         onChange();
         Toast.show("Memory removed.");
       }
@@ -252,7 +256,7 @@ const Memories = (() => {
         title,
         date,
         caption: String(data.get("caption") || "").trim(),
-        image: imageData || undefined,
+        image: imageData ? Media.store(imageData) : undefined,
         gradient: imageData ? undefined : GRADIENTS[Math.floor(Math.random() * GRADIENTS.length)],
         addedBy: Auth.currentUser().id,
         addedAt: Date.now(),
@@ -297,7 +301,7 @@ const Memories = (() => {
       const m = hit.item;
       return `
         <button type="button" class="on-this-day" data-memory-id="${UI.escape(m.id)}">
-          <span class="on-this-day__photo" style="${visual(m)}"></span>
+          <span class="on-this-day__photo" ${visual(m)}></span>
           <span class="on-this-day__body">
             <span class="on-this-day__label">${ago}</span>
             <span class="on-this-day__title">${UI.escape(m.title)}</span>
@@ -339,6 +343,7 @@ const Memories = (() => {
       list = sorted(loadMemories());
       grid.innerHTML = addTileHtml() + list.map(cardHtml).join("");
       root.querySelector("#on-this-day-host").innerHTML = onThisDayHtml();
+      Media.hydrate(root);
       const count = root.querySelector("#memories-count");
       count.textContent = list.length
         ? `${list.length} ${list.length === 1 ? "moment" : "moments"}, kept.`

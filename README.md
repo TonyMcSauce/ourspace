@@ -39,6 +39,13 @@ so the experience can be built and refined before Firebase is wired in.
   together (also shown in chat), your timeline, Our Song and favourite things.
   Tap the date at the top to change when it all began; it updates for both
   of you.
+- **Profile photos**: set yours from Settings or the Us page with a
+  circular cropper (drag and pinch to frame it). It shows everywhere: chat,
+  sidebar, sign-in, Settings and side by side on the Us page.
+- **Little comforts**: unread badge on the Chat tab (and the Home Screen
+  icon where iOS allows), press and hold a message to reply, heart, copy or
+  delete it, a jump-to-latest button, offline and "new version ready"
+  banners, and "Show earlier messages" for long histories.
 - **Passcode lock**: an optional 4-digit code per phone, asked on opening
   and after a minute away. The app switcher shows only a wax seal.
 - **iPhone app**: add it to your Home Screen for a proper icon, launch
@@ -64,6 +71,8 @@ Everything runs on Firebase's free Spark plan. Nothing here needs a card.
 │   ├── config.js        # names, dates, theme — the one file to edit
 │   ├── storage.js       # the only file that touches localStorage
 │   ├── ui.js            # shared helpers: icons, modals, dates, image resizing
+│   ├── media.js         # photo/voice store: safe, lazy, cached
+│   ├── avatars.js       # profile photos and the cropper
 │   ├── cloud.js         # Firebase sign-in, live sync and presence
 │   ├── auth.js          # demo login/logout
 │   ├── router.js        # hash-based client routing
@@ -205,6 +214,8 @@ spaces/us/capsules/{id}
 spaces/us/lists/{id}
 spaces/us/listItems/{id}
 spaces/us/meta/favourites
+spaces/us/media/{id}       photos and voice notes, fetched only when needed
+spaces/us/meta/avatars     profile photos (small)
 spaces/us/meta/song
 spaces/us/meta/countdown
 spaces/us/meta/profile
@@ -221,6 +232,18 @@ syncing again when you're back online.
 ---
 
 ## Security considerations
+
+- `firestore.rules` lets only your two accounts in, and each of you can
+  only write in your own name. You can't create a message, note, reason or
+  capsule as the other person, change what they wrote, change a sealed
+  capsule's date, or change their profile photo or "last seen". Their items
+  only accept the small things you're meant to change (read receipts,
+  hearts, "opened", "read"). The rules are covered by 49 emulator tests.
+- Photos and voice notes are only ever displayed if they're genuine
+  image/audio data, so a tampered database value can't inject code.
+- In the Firebase console it's worth also turning off new sign-ups
+  (Authentication > Settings > User actions) and restricting the API key to
+  your website (Google Cloud console > Credentials).
 
 - Demo mode has **no real password check**; it's for trying the app on one
   device. Shared mode uses real Firebase Authentication passwords.

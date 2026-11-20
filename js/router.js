@@ -10,6 +10,23 @@ const Router = (() => {
   let currentRoute = null;
   let rootEl = null;
   let listening = false;
+  let cleanups = [];
+
+  /** Let the current page clean up timers/listeners when it's left. */
+  function onLeave(fn) {
+    cleanups.push(fn);
+  }
+  function runCleanups() {
+    const fns = cleanups;
+    cleanups = [];
+    fns.forEach((fn) => {
+      try {
+        fn();
+      } catch (err) {
+        console.error(err);
+      }
+    });
+  }
 
   function register(name, renderFn) {
     routes[name] = renderFn;
@@ -48,6 +65,7 @@ const Router = (() => {
       if (currentRoute !== name || !document.contains(rootEl)) return;
     }
 
+    runCleanups();
     rootEl.innerHTML = "";
     rootEl.classList.remove("view-root--leaving");
     rootEl.classList.add("view-root--entering");
@@ -94,5 +112,5 @@ const Router = (() => {
     return currentRoute;
   }
 
-  return { register, navigate, init, render, refresh, current };
+  return { register, navigate, init, render, refresh, current, onLeave, runCleanups };
 })();

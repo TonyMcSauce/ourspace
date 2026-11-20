@@ -155,7 +155,8 @@ const Wallpaper = (() => {
     layer.style.backgroundImage = look.image || "";
     layer.style.backgroundSize = look.size || "";
     layer.style.backgroundAttachment = "";
-    layer.innerHTML = isPhoto ? `<span class="chat-wallpaper__photo" style="background-image:url('${w.photo.replace(/'/g, "%27")}')"></span>` : "";
+    layer.innerHTML = isPhoto ? `<span class="chat-wallpaper__photo" ${Media.attrs(w.photo, "bg")}></span>` : "";
+    if (isPhoto) Media.hydrate(layer);
     view.style.setProperty("--wp-dim", String(isPhoto ? (w.dim ?? 0.35) : 0));
     view.style.setProperty("--wp-blur", `${isPhoto ? (w.blur ?? 6) : 0}px`);
     view.classList.toggle("chat-view--photo", Boolean(isPhoto));
@@ -336,7 +337,18 @@ const Wallpaper = (() => {
         error.hidden = false;
         return;
       }
-      if (shareBoth) Storage.setWallpaperShared(record);
+      if (shareBoth) {
+        // Share the photo through the media store, not inside the setting.
+        const shared = { ...record };
+        if (shared.photo) {
+          try {
+            shared.photo = Media.store(shared.photo);
+          } catch {
+            delete shared.photo;
+          }
+        }
+        Storage.setWallpaperShared(shared);
+      }
       UI.closeModal();
       if (onDone) onDone();
       Toast.show(shareBoth ? `New wallpaper for you and ${other.displayName} ❤️` : "Wallpaper saved.");

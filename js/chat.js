@@ -106,7 +106,7 @@ const Chat = (() => {
               : ""
           }
           ${m.kind === "voice" ? Voice.playerHtml(m) : ""}
-          ${m.image ? `<button type="button" class="msg__image" data-open-image><img src="${UI.escape(m.image)}" alt="Shared photo" decoding="async" /></button>` : ""}
+          ${m.image ? `<button type="button" class="msg__image" data-open-image data-image="${UI.escape(m.image)}"><img ${Media.attrs(m.image, "src")} alt="Shared photo" decoding="async" ${imageSize(m)} /></button>` : ""}
           ${m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
           <span class="msg__meta">${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
           ${hearted ? `<span class="msg__heart" aria-label="Hearted">❤️</span>` : ""}
@@ -115,6 +115,14 @@ const Chat = (() => {
       </div>
     `;
   }
+
+  function imageSize(m) {
+    const w = Math.round(Number(m.w));
+    const h = Math.round(Number(m.h));
+    return w > 0 && h > 0 && w < 10000 && h < 10000 ? `width="${w}" height="${h}" style="aspect-ratio:${w}/${h}"` : "";
+  }
+
+  const PAGE = 80;
 
   function renderMessageList(container, messages, me, { stickToBottom = true } = {}) {
     if (messages.length === 0) {
@@ -127,13 +135,28 @@ const Chat = (() => {
       `;
       return;
     }
+    // Only the latest messages are drawn; older ones on request. Keeps
+    // the chat quick however long your history grows.
+    const limit = Number(container.dataset.limit) || PAGE;
+    const start = Math.max(0, messages.length - limit);
+    const more = start > 0 || Cloud.hasOlderMessages();
     const prevScroll = container.scrollTop;
-    container.innerHTML = messages.map((m, i) => messageHtml(m, messages[i - 1], me)).join("");
-    container.scrollTop = stickToBottom ? container.scrollHeight : prevScroll;
+    const fromBottom = container.scrollHeight - container.scrollTop;
+    container.innerHTML =
+      (more ? `<button type="button" class="load-earlier" data-load-earlier>Show earlier messages</button>` : "") +
+      messages
+        .slice(start)
+        .map((m, i) => messageHtml(m, messages[start + i - 1], me))
+        .join("");
+    if (container._keepPosition) {
+      container.scrollTop = container.scrollHeight - fromBottom;
+      container._keepPosition = false;
+    } else container.scrollTop = stickToBottom ? container.scrollHeight : prevScroll;
+    Media.hydrate(container);
     Voice.restore(container);
     if (stickToBottom) {
-      // Photos change height once decoded; keep the latest message in view.
-      container.querySelectorAll(".msg__image img").forEach((img) => {
+      // Older photos without a saved size grow once loaded; stay at the bottom.
+      container.querySelectorAll(".msg__image img:not([width])").forEach((img) => {
         if (!img.complete) img.addEventListener("load", () => (container.scrollTop = container.scrollHeight), { once: true });
       });
     }
@@ -156,7 +179,7 @@ const Chat = (() => {
       <section class="chat-view" aria-label="Chat with ${UI.escape(other.displayName)}">
         <div class="chat-wallpaper" aria-hidden="true"></div>
         <header class="chat-header">
-          <div class="avatar avatar--lg ${other.id === Object.keys(CONFIG.users)[1] ? "avatar--alt" : ""}" aria-hidden="true">${UI.escape(other.avatarInitial)}<span class="avatar__presence"></span></div>
+          ${Avatars.html(other, "avatar--lg", '<span class="avatar__presence"></span>', 'aria-hidden="true"')}
           <div class="chat-header__info">
             <h1 class="chat-header__name">${UI.escape(other.displayName)}</h1>
             <p class="chat-header__status" id="chat-status">${UI.escape(statusFor(other))}</p>
@@ -168,6 +191,9 @@ const Chat = (() => {
         ${countdownStripHtml()}
 
         <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <button type="button" class="jump-latest" id="jump-latest" hidden aria-label="Jump to the latest message">
+          <span class="jump-latest__count" hidden></span>${UI.icon("chevronRight")}
+        </button>
 
         <div class="chat-composer">
           <div class="popover emoji-picker" id="emoji-picker" hidden>
@@ -384,9 +410,10 @@ const Chat = (() => {
     }
     async function sendPhotoFile(file) {
       try {
-        const image = await UI.readImage(file, { maxSize: 1080, quality: 0.8 });
+        const data = await UI.readImage(file, { maxSize: 1080, quality: 0.8 });
+        const { w, h } = await UI.imageSize(data);
         const caption = textarea.value.trim();
-        if (send({ image, text: caption })) {
+        if (send({ image: Media.store(data), w, h, text: caption })) {
           textarea.value = "";
           syncComposer();
         }
@@ -440,7 +467,31 @@ const Chat = (() => {
     }
 
     let lastTap = { id: null, time: 0 };
+    async function loadEarlier(btn) {
+      const limit = (Number(messagesEl.dataset.limit) || PAGE) + PAGE;
+      messagesEl.dataset.limit = String(limit);
+      messagesEl._keepPosition = true;
+      const all = loadMessages();
+      if (limit > all.length && Cloud.hasOlderMessages()) {
+        btn.disabled = true;
+        btn.textContent = "Loading\u2026";
+        try {
+          const added = await Cloud.loadOlderMessages(all.length ? all[0].ts : Date.now());
+          if (added) return; // the live listener redraws with the older messages
+        } catch {
+          Toast.show("Couldn't load older messages. Check your connection.");
+        }
+      }
+      messages = loadMessages();
+      renderMessageList(messagesEl, messages, me, { stickToBottom: false });
+    }
+
     messagesEl.addEventListener("click", (e) => {
+      const earlier = e.target.closest("[data-load-earlier]");
+      if (earlier) {
+        loadEarlier(earlier);
+        return;
+      }
       const replyBtn = e.target.closest("[data-reply]");
       if (replyBtn) {
         startReply(replyBtn.closest("[data-msg-id]").dataset.msgId);
@@ -464,8 +515,8 @@ const Chat = (() => {
         return;
       }
       if (imageBtn) {
-        const src = imageBtn.querySelector("img").src;
-        const timer = setTimeout(() => openImage(src), 330);
+        const ref = imageBtn.dataset.image;
+        const timer = setTimeout(() => Media.load(ref).then((src) => src && openImage(src)), 330);
         lastTap = { id, time: now, timer };
         return;
       }
@@ -512,6 +563,12 @@ const Chat = (() => {
       };
       vv.addEventListener("resize", fit);
       vv.addEventListener("scroll", fit);
+      Router.onLeave(() => {
+        vv.removeEventListener("resize", fit);
+        vv.removeEventListener("scroll", fit);
+        document.body.classList.remove("is-typing");
+        document.documentElement.style.removeProperty("--keyboard-free");
+      });
     }
     // Composer buttons must not steal focus from the text box, otherwise
     // the keyboard drops and the layout jumps mid-tap (send, emoji,
@@ -590,7 +647,7 @@ const Chat = (() => {
       recording = null;
       try {
         const note = await rec.stop();
-        send({ kind: "voice", ...note });
+        send({ kind: "voice", ...note, audio: Media.store(note.audio) });
       } catch (err) {
         Toast.show(err.message);
       } finally {
@@ -611,7 +668,131 @@ const Chat = (() => {
     recorderEl.addEventListener("keydown", (e) => {
       if (e.key === "Escape") cancelRecording();
     });
-    window.addEventListener("hashchange", cancelRecording, { once: true });
+    Router.onLeave(cancelRecording);
+
+    // ---- Jump to latest -------------------------------------------
+    const jumpBtn = root.querySelector("#jump-latest");
+    const jumpCount = jumpBtn.querySelector(".jump-latest__count");
+    let unseenBelow = 0;
+    function syncJump() {
+      const away = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight > 360;
+      if (!away) unseenBelow = 0;
+      jumpBtn.hidden = !away;
+      jumpCount.hidden = unseenBelow === 0;
+      jumpCount.textContent = unseenBelow > 9 ? "9+" : String(unseenBelow);
+    }
+    messagesEl.addEventListener("scroll", () => requestAnimationFrame(syncJump), { passive: true });
+    jumpBtn.addEventListener("click", () => {
+      unseenBelow = 0;
+      jumpBtn.hidden = true;
+      const far = messagesEl.scrollHeight - messagesEl.scrollTop > messagesEl.clientHeight * 4;
+      messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: far ? "auto" : "smooth" });
+    });
+
+    // ---- Press and hold (or right-click) a message for actions ------
+    async function deleteMessage(id) {
+      const m = loadMessages().find((x) => x.id === id);
+      if (!m) return;
+      const ok = await UI.confirm({
+        title: "Delete this message?",
+        message: `It will disappear for you and ${other.displayName}.`,
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+      saveMessages(loadMessages().filter((x) => x.id !== id));
+      Media.remove(m.image);
+      Media.remove(m.audio);
+      messages = loadMessages();
+      renderMessageList(messagesEl, messages, me, { stickToBottom: false });
+    }
+
+    function openActions(id) {
+      const m = loadMessages().find((x) => x.id === id);
+      if (!m || m.kind === "nudge") return;
+      if (navigator.vibrate) navigator.vibrate(12);
+      const mine = m.from === me.id;
+      const hearted = (m.hearts || []).includes(me.id);
+      const text = (m.text || "").trim();
+      const action = (key, icon, label, cls = "") =>
+        `<button type="button" class="sheet-action ${cls}" data-action="${key}">${UI.icon(icon)}<span>${label}</span></button>`;
+      const panel = UI.openModal({
+        variant: "modal__panel--actions",
+        label: "Message actions",
+        content: `
+          <p class="sheet-preview">${UI.escape(snippet(m) || "Message")}</p>
+          <div class="sheet-actions">
+            ${action("reply", "reply", "Reply")}
+            ${action("heart", "us", hearted ? "Remove heart" : "Heart it", hearted ? "" : "sheet-action--wax")}
+            ${text ? action("copy", "copy", "Copy text") : ""}
+            ${mine ? action("delete", "trash", "Delete for both of us", "sheet-action--danger") : ""}
+          </div>`,
+      });
+      panel.addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-action]");
+        if (!btn) return;
+        const what = btn.dataset.action;
+        UI.closeModal();
+        if (what === "reply") setTimeout(() => startReply(id), 200);
+        else if (what === "heart") toggleHeart(id);
+        else if (what === "copy") {
+          try {
+            await navigator.clipboard.writeText(text);
+            Toast.show("Copied.");
+          } catch {
+            Toast.show("Couldn't copy on this device.");
+          }
+        } else if (what === "delete") setTimeout(() => deleteMessage(id), 200);
+      });
+    }
+
+    let hold = null;
+    let suppressClick = false;
+    messagesEl.addEventListener("pointerdown", (e) => {
+      const row = e.target.closest(".msg");
+      if (!row || e.button > 0 || e.target.closest(".voice, [data-reply], [data-jump]")) return;
+      const start = { x: e.clientX, y: e.clientY };
+      clearTimeout(hold && hold.timer);
+      hold = {
+        start,
+        timer: setTimeout(() => {
+          suppressClick = true;
+          hold = null;
+          openActions(row.dataset.msgId);
+        }, 480),
+      };
+    });
+    messagesEl.addEventListener("pointermove", (e) => {
+      if (hold && Math.hypot(e.clientX - hold.start.x, e.clientY - hold.start.y) > 10) {
+        clearTimeout(hold.timer);
+        hold = null;
+      }
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((t) =>
+      messagesEl.addEventListener(t, () => {
+        if (hold) clearTimeout(hold.timer);
+        hold = null;
+      })
+    );
+    messagesEl.addEventListener(
+      "click",
+      (e) => {
+        if (suppressClick) {
+          suppressClick = false;
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      },
+      true
+    );
+    messagesEl.addEventListener("contextmenu", (e) => {
+      const row = e.target.closest(".msg");
+      if (!row) return;
+      e.preventDefault();
+      if (hold) clearTimeout(hold.timer);
+      hold = null;
+      openActions(row.dataset.msgId);
+    });
 
     // Swipe a bubble to the right to reply (touch screens).
     let swipe = null;
@@ -661,17 +842,11 @@ const Chat = (() => {
       if (presenceDot) presenceDot.hidden = Cloud.isActive() && !isOnline(other);
     }
     paintPresence();
-    const presenceTimer = setInterval(() => {
-      if (!document.contains(messagesEl)) return clearInterval(presenceTimer);
-      paintPresence();
-    }, 30 * 1000);
+    const presenceTimer = setInterval(paintPresence, 30 * 1000);
+    Router.onLeave(() => clearInterval(presenceTimer));
 
     const off = Storage.onChange((kind) => {
-      if (!document.contains(messagesEl)) {
-        off();
-        clearInterval(presenceTimer);
-        return;
-      }
+      if (!document.contains(messagesEl)) return;
       if (kind === "presence") paintPresence();
       if (kind === "wallpaper") Wallpaper.apply(root.querySelector(".chat-view"));
       if (kind === "countdown") {
@@ -683,9 +858,19 @@ const Chat = (() => {
       }
       if (kind !== "messages") return;
       const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+      const newestBefore = messages.length ? messages[messages.length - 1].ts : 0;
       messages = loadMessages();
       renderMessageList(messagesEl, messages, me, { stickToBottom: nearBottom });
+      if (!nearBottom) {
+        // Only genuinely new arrivals, not older history loaded on request.
+        const fresh = messages.filter((m) => m.ts > newestBefore && m.from !== me.id).length;
+        if (fresh > 0) {
+          unseenBelow += fresh;
+          syncJump();
+        }
+      }
     });
+    Router.onLeave(off);
     markSeen();
   }
 
@@ -726,7 +911,7 @@ const Chat = (() => {
     el.className = "heartbeat";
     el.setAttribute("role", "alert");
     el.innerHTML = `
-      <div class="heartbeat__seal seal" aria-hidden="true">${UI.icon("us")}</div>
+      <div class="heartbeat__face" aria-hidden="true">${Avatars.html(from, "avatar--xxl")}<span class="seal heartbeat__seal"></span></div>
       <p class="heartbeat__text"><em>${UI.escape(from.displayName)}</em> is thinking of you</p>
       <p class="heartbeat__hint">Tap anywhere</p>`;
     const close = () => {
