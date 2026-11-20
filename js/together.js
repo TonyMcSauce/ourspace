@@ -671,12 +671,12 @@ const Together = (() => {
 
     function refresh(opts = {}) {
       if (!document.contains(panel)) return;
-      root.querySelectorAll("[data-tab]").forEach((t) => {
+      root.querySelectorAll(".together-tab[data-tab]").forEach((t) => {
         const on = t.dataset.tab === tab;
         t.classList.toggle("together-tab--on", on);
         t.setAttribute("aria-selected", String(on));
       });
-      panel.dataset.tab = tab;
+      panel.dataset.panel = tab;
       if (tab === "jar") {
         panel.innerHTML = jarHtml(freshSlip);
         freshSlip = null;
@@ -694,7 +694,7 @@ const Together = (() => {
       }
     }
 
-    root.querySelectorAll("[data-tab]").forEach((t) =>
+    root.querySelectorAll(".together-tab[data-tab]").forEach((t) =>
       t.addEventListener("click", () => {
         tab = t.dataset.tab;
         try {
