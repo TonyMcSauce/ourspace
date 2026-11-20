@@ -17,8 +17,8 @@ const Wallpaper = (() => {
   function palette() {
     const dark = ThemeManager.current() === "dark";
     return dark
-      ? { dark, ink: "239,230,214", wax: "239,106,79", rose: "201,120,140", paper: "#16120f" }
-      : { dark, ink: "34,26,21", wax: "200,56,42", rose: "217,154,165", paper: "#f3ece0" };
+      ? { dark, ink: "239,230,214", wax: "239,106,79", rose: "201,120,140", paper: "#141110" }
+      : { dark, ink: "34,26,21", wax: "214,69,58", rose: "217,154,165", paper: "#fbf7f1" };
   }
   const rgba = (rgb, a) => `rgba(${rgb},${a})`;
 
