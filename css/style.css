@@ -2370,6 +2370,18 @@ body.in-call { overflow: hidden; }
 .call-screen__status { font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.06em; color: rgba(255, 248, 239, 0.75); font-variant-numeric: tabular-nums; }
 .call-screen--video.call-screen--live .call-screen__who { transform: translateY(-4vh) scale(0.6); }
 .call-screen--video.call-screen--live .call-screen__face { display: none; }
+/* Like FaceTime: soft shade at the top and bottom so the name, timer and
+   buttons stay readable over any picture. */
+.call-screen--video.call-screen--live::before,
+.call-screen--video.call-screen--live::after {
+  content: ""; position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none;
+  animation: fade 600ms var(--ease);
+}
+.call-screen--video.call-screen--live::before { top: 0; height: 34%; background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.22) 55%, transparent); }
+.call-screen--video.call-screen--live::after { bottom: 0; height: 30%; background: linear-gradient(transparent, rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.6)); }
+.call-screen--video.call-screen--live .call-screen__name,
+.call-screen--video.call-screen--live .call-screen__status { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 18px rgba(0, 0, 0, 0.35); }
+.call-screen--video.call-screen--live .call-btn span { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
 .call-screen--ending .call-screen__status { color: #ffb3a3; }
 .call-screen__sound { display: none; }
 .call-screen--live .call-screen__status { cursor: pointer; }
