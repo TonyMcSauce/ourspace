@@ -130,6 +130,13 @@ const Cloud = (() => {
     firebase.initializeApp(cfg);
     auth = firebase.auth();
     db = firebase.firestore();
+    // Keep everything you've seen on the device (no 40 MB cap), so older
+    // photos and voice notes don't quietly drop out of the offline copy.
+    try {
+      db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED, merge: true });
+    } catch (err) {
+      console.info("Cloud: cache size unchanged.", err && err.message);
+    }
     // Offline cache: instant loads and offline reading/writing.
     try {
       await db.enablePersistence({ synchronizeTabs: true });
@@ -159,9 +166,15 @@ const Cloud = (() => {
               : space().collection(kind);
           const off = query
             .onSnapshot(
+              { includeMetadataChanges: kind === "messages" },
               (snap) => {
                 const docs = snap.docs.map((d) => d.data());
                 if (kind === "messages") {
+                  // Messages still waiting to leave this phone (offline).
+                  const nextPending = new Set(snap.docs.filter((d) => d.metadata && d.metadata.hasPendingWrites).map((d) => d.id));
+                  const pendingChanged = nextPending.size !== pendingIds.size || [...nextPending].some((id) => !pendingIds.has(id));
+                  pendingIds = nextPending;
+                  if (pendingChanged) setTimeout(() => Storage.touch("messages"), 0);
                   hasOlder = snap.size >= MESSAGE_WINDOW;
                   // A full window is only the newest slice: keep older
                   // messages already loaded on this phone.
@@ -205,6 +218,7 @@ const Cloud = (() => {
   // Older messages and the media store
   // ---------------------------------------------------------------
   let hasOlder = false;
+  let pendingIds = new Set();
 
   async function loadOlderMessages(beforeTs, count = 150) {
     if (!db || !userId) return 0;
@@ -294,19 +308,121 @@ const Cloud = (() => {
   const pushReady = () => Boolean(enabled && push.workerUrl && push.vapidKey);
 
   /** Ask the notifier to tap the other phone. Fire and forget. */
+  // Notifications made while offline wait here and go out once your
+  // messages have actually synced (so they never arrive before them).
+  const QUEUE_KEY = "ourspace_notify_queue";
+  const readQueue = () => {
+    try {
+      return JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+    } catch {
+      return [];
+    }
+  };
+  const writeQueue = (q) => {
+    try {
+      q.length ? localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-30))) : localStorage.removeItem(QUEUE_KEY);
+    } catch {}
+  };
+  function queueNotify(kind, extra) {
+    if (kind === "call") return; // a missed ring can't be delivered later
+    writeQueue([...readQueue(), { kind, extra, at: Date.now() }]);
+  }
+  async function sendNotify(kind, extra) {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch(`${push.workerUrl}/notify`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...extra, kind }),
+      keepalive: true,
+    });
+    if (res.status >= 500) throw new Error(`notifier ${res.status}`);
+  }
   async function notify(kind, extra = {}) {
     if (!pushReady() || !userId || !auth || !auth.currentUser) return;
+    if (!navigator.onLine) return queueNotify(kind, extra);
     try {
-      const idToken = await auth.currentUser.getIdToken();
-      await fetch(`${push.workerUrl}/notify`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...extra, kind }),
-        keepalive: true,
-      });
+      await sendNotify(kind, extra);
     } catch (err) {
-      console.info("Notification not sent", err);
+      console.info("Notification queued", err);
+      queueNotify(kind, extra);
     }
+  }
+  let flushing = false;
+  async function flushNotifications() {
+    if (flushing || !navigator.onLine || !pushReady() || !auth || !auth.currentUser) return;
+    const queue = readQueue().filter((n) => Date.now() - n.at < 24 * 3600 * 1000);
+    if (!queue.length) return writeQueue([]);
+    flushing = true;
+    try {
+      await whenSynced();
+      // One nudge per kind is plenty ("New message from Tony"), but each
+      // different check-in phrase is kept.
+      const seen = new Set();
+      const batch = queue.filter((n) => {
+        const key = n.kind === "checkin" ? `checkin:${n.extra && n.extra.preset}` : n.kind;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      for (const n of batch) await sendNotify(n.kind, n.extra || {});
+      writeQueue([]);
+    } catch (err) {
+      console.info("Queued notifications will retry", err);
+    } finally {
+      flushing = false;
+    }
+  }
+
+  /** Resolves once everything written on this phone has reached the server. */
+  function whenSynced() {
+    if (!db || !db.waitForPendingWrites) return Promise.resolve();
+    return db.waitForPendingWrites();
+  }
+
+  // ---------------------------------------------------------------
+  // Offline-ready photos and voice notes: quietly download the most
+  // recent ones in the background, so they open without a signal.
+  // ---------------------------------------------------------------
+  const PREFETCH_COUNT = 100;
+  const prefetched = new Set();
+  let prefetching = false;
+  async function prefetchMedia() {
+    if (prefetching || !db || !userId || !navigator.onLine) return 0;
+    const conn = navigator.connection;
+    if (conn && conn.saveData) return 0; // respect Low Data Mode
+    const refs = [];
+    const add = (v) => {
+      if (typeof v === "string" && v.startsWith("media:")) refs.push(v.slice(6));
+    };
+    const msgs = (Storage.getMessages() || []).slice().sort((a, b) => b.ts - a.ts);
+    msgs.forEach((m) => {
+      add(m.image);
+      add(m.audio);
+    });
+    (Storage.getMemories() || []).forEach((m) => add(m.image));
+    (Storage.getCapsules() || []).forEach((c) => add(c.photo));
+    const ids = [...new Set(refs)].filter((id) => !prefetched.has(id)).slice(0, PREFETCH_COUNT);
+    prefetching = true;
+    let fetched = 0;
+    try {
+      for (const id of ids) {
+        if (!navigator.onLine || document.visibilityState !== "visible") break;
+        prefetched.add(id);
+        const ref = space().collection("media").doc(id);
+        try {
+          await ref.get({ source: "cache" });
+          continue; // already on this phone
+        } catch {}
+        try {
+          await ref.get(); // stored in the offline copy by Firestore
+          fetched++;
+        } catch {}
+        await new Promise((r) => setTimeout(r, 150)); // gentle on the connection
+      }
+    } finally {
+      prefetching = false;
+    }
+    return fetched;
   }
 
   /**
@@ -459,6 +575,22 @@ const Cloud = (() => {
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onPageHide);
     setTimeout(refreshPush, 6000);
+    // Offline readiness: send waiting notifications, then fetch recent
+    // photos and voice notes in the background.
+    setTimeout(flushNotifications, 3000);
+    setTimeout(prefetchMedia, 9000);
+    window.addEventListener("online", () => {
+      flushNotifications();
+      setTimeout(prefetchMedia, 5000);
+    });
+    let lastPrefetch = Date.now();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && Date.now() - lastPrefetch > 30 * 60 * 1000) {
+        lastPrefetch = Date.now();
+        flushNotifications();
+        setTimeout(prefetchMedia, 4000);
+      }
+    });
   }
 
   function friendlyAuthError(err) {
@@ -511,6 +643,11 @@ const Cloud = (() => {
     getMedia,
     deleteMedia,
     notify,
+    flushNotifications,
+    whenSynced,
+    prefetchMedia,
+    isPending: (id) => pendingIds.has(id),
+    pendingCount: () => pendingIds.size,
     setTyping,
     watchScheduled,
     saveScheduled,

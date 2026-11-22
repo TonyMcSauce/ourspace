@@ -428,13 +428,25 @@ const App = (() => {
     }, delay);
   }
   function watchConnection() {
-    const sync = () => {
+    const sync = async () => {
       if (navigator.onLine) {
-        if (document.querySelector('.banner[data-kind="offline"]')) {
-          showBanner("offline", "Back online \u00B7 all synced").classList.add("banner--good");
-          hideBanner("offline", 2200);
+        if (!document.querySelector('.banner[data-kind="offline"]')) return;
+        const cloud = typeof Cloud !== "undefined" && Cloud.isActive();
+        const count = cloud ? Cloud.pendingCount() : 0;
+        if (count) showBanner("offline", `Back online \u00B7 sending ${count} ${count === 1 ? "message" : "messages"}\u2026`).classList.remove("banner--good");
+        try {
+          if (cloud) await Promise.race([Cloud.whenSynced(), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 30000))]);
+          if (!navigator.onLine) return;
+          const text = count ? `All caught up \u00B7 ${count} ${count === 1 ? "message" : "messages"} sent` : "Back online \u00B7 all caught up";
+          showBanner("offline", text).classList.add("banner--good");
+          hideBanner("offline", 2600);
+        } catch {
+          showBanner("offline", "Back online \u00B7 still sending\u2026").classList.remove("banner--good");
+          setTimeout(sync, 5000);
         }
-      } else showBanner("offline", "You're offline \u00B7 we'll sync when you're back");
+      } else {
+        showBanner("offline", "You're offline \u00B7 will send when back").classList.remove("banner--good");
+      }
     };
     window.addEventListener("online", sync);
     window.addEventListener("offline", sync);

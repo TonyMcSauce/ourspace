@@ -82,6 +82,12 @@ so the experience can be built and refined before Firebase is wired in.
   and stay quiet while the other person already has the app open.
 - **Passcode lock**: an optional 4-digit code per phone, asked on opening
   and after a minute away. The app switcher shows only a wax seal.
+- **Works offline**: the app opens with no signal and shows everything
+  already on the phone. Messages you send offline show a 🕓 until they've
+  left your phone, and her notification is sent once they have. Your
+  recent photos and voice notes (the last 100) download quietly in the
+  background so they open without a signal, and the offline copy has no
+  size cap. "All caught up" only shows once everything has really synced.
 - **iPhone app**: add it to your Home Screen for a proper icon, launch
   screen, full-screen layout and offline opening.
 

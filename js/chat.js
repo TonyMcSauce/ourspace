@@ -87,6 +87,11 @@ const Chat = (() => {
     return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
+  /** Still on this phone, waiting for a connection. */
+  function pendingClock() {
+    return `<span class="msg-status msg-status--pending" aria-label="Waiting to send" title="Waiting to send"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.2 1.4"/></svg></span>`;
+  }
+
   function statusTicks(status) {
     const label = { read: "Read", delivered: "Delivered", sent: "Sent" }[status] || "Sent";
     const ticks = status === "sent" ? "✓" : "✓✓";
@@ -175,7 +180,7 @@ const Chat = (() => {
           ${m.kind === "voice" ? Voice.playerHtml(m) : ""}
           ${m.image ? `<button type="button" class="msg__image" data-open-image data-image="${UI.escape(m.image)}"><img ${Media.attrs(m.image, "src")} alt="Shared photo" decoding="async" ${imageSize(m)} /></button>` : ""}
           ${m.kind === "checkin" ? ChatExtras.checkinHtml(m) : m.text ? `<p class="msg__text">${UI.escape(m.text)}</p>` : ""}
-          <span class="msg__meta">${m.editedAt ? `<span class="msg__edited">Edited</span>` : ""}${formatTime(m.ts)} ${mine ? statusTicks(m.status) : ""}</span>
+          <span class="msg__meta">${m.editedAt ? `<span class="msg__edited">Edited</span>` : ""}${formatTime(m.ts)} ${mine ? (Cloud.isActive() && Cloud.isPending(m.id) ? pendingClock() : statusTicks(m.status)) : ""}</span>
           ${
             hearted
               ? `<span class="msg__reacts" aria-label="Reactions: ${UI.escape(reacts.map(([uid, e]) => `${nameOf(uid, me)} ${e}`).join(", "))}">${reacts
@@ -1227,8 +1232,9 @@ const Chat = (() => {
     const presenceDot = root.querySelector(".avatar__presence");
     let typingExpiry = null;
     function paintPresence() {
-      const since = Cloud.isActive() ? typingSince(other) : 0;
-      statusEl.textContent = since ? "typing…" : statusFor(other);
+      const offline = Cloud.isActive() && !navigator.onLine;
+      const since = Cloud.isActive() && !offline ? typingSince(other) : 0;
+      statusEl.textContent = offline ? "waiting for connection" : since ? "typing…" : statusFor(other);
       statusEl.classList.toggle("chat-header__status--typing", Boolean(since));
       if (presenceDot) presenceDot.hidden = Cloud.isActive() && !isOnline(other);
       // Three soft dots at the bottom of the chat while they type.
@@ -1246,6 +1252,12 @@ const Chat = (() => {
       if (since) typingExpiry = setTimeout(paintPresence, TYPING_WINDOW - (Date.now() - since) + 150);
     }
     paintPresence();
+    window.addEventListener("online", paintPresence);
+    window.addEventListener("offline", paintPresence);
+    Router.onLeave(() => {
+      window.removeEventListener("online", paintPresence);
+      window.removeEventListener("offline", paintPresence);
+    });
     const presenceTimer = setInterval(paintPresence, 30 * 1000);
     Router.onLeave(() => {
       clearInterval(presenceTimer);
