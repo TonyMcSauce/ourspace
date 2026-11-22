@@ -106,6 +106,10 @@ const Storage = (() => {
       cache[kind] = next;
       if (changed) emit(kind);
     },
+    /** Something about the data changed without the data itself (e.g. sync state). */
+    touch(kind) {
+      emit(kind);
+    },
     /** Add older messages fetched on request (shared mode). */
     mergeMessages(list) {
       if (!list || !list.length) return;

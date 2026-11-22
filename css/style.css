@@ -2714,3 +2714,7 @@ body { font-feature-settings: "cv11", "ss01"; }
 .chat-header__name { font-family: var(--serif); font-weight: 400; }
 .chat-search__field { min-width: 0; }
 .chat-search__cancel { flex: none; }
+
+/* Waiting to send (offline) */
+.msg-status--pending { display: inline-flex; align-items: center; opacity: 0.85; letter-spacing: 0; margin-left: 1px; animation: pending-pulse 2s ease-in-out infinite; }
+@keyframes pending-pulse { 50% { opacity: 0.45; } }

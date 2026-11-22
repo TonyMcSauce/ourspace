@@ -314,7 +314,7 @@ const Calls = (() => {
    * frame by frame onto a canvas instead, which always shows.
    */
   const PAINT_VIDEO = /Windows/i.test(navigator.userAgent);
-  const BUILD = "24"; // shown in the call readout; matches sw.js
+  const BUILD = "25"; // shown in the call readout; matches sw.js
   function paintVideo(video, canvas) {
     if (!PAINT_VIDEO || !canvas || canvas._painting) return;
     canvas._painting = true;
